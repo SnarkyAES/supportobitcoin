@@ -64,7 +64,7 @@ def show_disclaimer_popup():
     with col2:
         st.markdown("## ⚠️ DISCLAIMER / AVVERTENZE")
         
-        st.error("**LEGGERE ATTENTAMENTE PRIMA DI PROCEDERE**")
+        st.error("**LEGGERE ATTENTAMENTE PRIMA DI PROCEDERE V6**")
         
         st.markdown("### 🇮🇹 Italiano")
         st.markdown("""
@@ -1531,16 +1531,25 @@ def main():
             
             strategy_rows.append({
                 'Livello': level,
-                'Prezzo Entry ($)': f"${entry_price:,.0f}",
-                'Sconto (%)': f"{(entry_price / CURRENT_PRICE - 1) * 100:+.1f}%",
-                'Prob. (%)': f"{prob_reach * 100:.1f}%",
-                'via BS (%)': f"{prob_bs * 100:.1f}%",
-                'BTC se eseguito': f"{btc_bought:.6f}",
-                'Valore Atteso (€)': f"€{ev:,.0f}",
-                'Rend. Atteso (%)': f"{expected_return:+.1f}%",
+                'Prezzo Entry ($)': round(entry_price, 0),
+                'Sconto (%)': round((entry_price / CURRENT_PRICE - 1) * 100, 1),
+                'Prob. (%)': round(prob_reach * 100, 1),
+                'via BS (%)': round(prob_bs * 100, 1),
+                'BTC se eseguito': round(btc_bought, 6),
+                'Valore Atteso (€)': round(ev, 0),
+                'Rend. Atteso (%)': round(expected_return, 1),
             })
         
-        st.dataframe(pd.DataFrame(strategy_rows), width="stretch", hide_index=True)
+        col_cfg = {
+            'Prezzo Entry ($)': st.column_config.NumberColumn(format=",.0f"),
+            'Sconto (%)': st.column_config.NumberColumn(format=".1f"),
+            'Prob. (%)': st.column_config.NumberColumn(format=".1f"),
+            'via BS (%)': st.column_config.NumberColumn(format=".1f"),
+            'BTC se eseguito': st.column_config.NumberColumn(format=".6f"),
+            'Valore Atteso (€)': st.column_config.NumberColumn(format=",.0f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format=".1f"),
+        }
+        st.dataframe(pd.DataFrame(strategy_rows), width="stretch", hide_index=True, column_config=col_cfg)
         
         # --- Split Strategies with Reserve ---
         st.markdown("---")
@@ -1587,15 +1596,23 @@ def main():
             
             split_rows.append({
                 'Strategia': strat['name'],
-                'Invest (%)': f"{(1 - reserve_pct) * 100:.0f}%",
-                'Riserva (%)': f"{reserve_pct * 100:.0f}%",
-                'Prob. Esec. (%)': f"{executed_pct * 100:.1f}%",
-                'BTC Attesi': f"{total_btc:.6f}",
-                'Valore Atteso (€)': f"€{total_ev:,.0f}",
-                'Rend. Atteso (%)': f"{expected_return:+.1f}%",
+                'Invest (%)': round((1 - reserve_pct) * 100, 0),
+                'Riserva (%)': round(reserve_pct * 100, 0),
+                'Prob. Esec. (%)': round(executed_pct * 100, 1),
+                'BTC Attesi': round(total_btc, 6),
+                'Valore Atteso (€)': round(total_ev, 0),
+                'Rend. Atteso (%)': round(expected_return, 1),
             })
         
-        st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
+        split_cfg = {
+            'Invest (%)': st.column_config.NumberColumn(format=".0f"),
+            'Riserva (%)': st.column_config.NumberColumn(format=".0f"),
+            'Prob. Esec. (%)': st.column_config.NumberColumn(format=".1f"),
+            'BTC Attesi': st.column_config.NumberColumn(format=".6f"),
+            'Valore Atteso (€)': st.column_config.NumberColumn(format=",.0f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format=".1f"),
+        }
+        st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True, column_config=split_cfg)
         
         if reserve_pct > 0:
             st.caption(f"💡 La riserva (€{budget_reserve:,.0f}) viene deployata a Q10 durante eventi Black Swan. Se il BS non avviene, resta in cash.")
@@ -1720,19 +1737,27 @@ def main():
             returns = bt_results[strategy]
             excess = returns - period_rf * 100  # convert to percentage
             sharpe_val = round(excess.mean() / returns.std(), 2) if returns.std() > 0 else None
-            sharpe_str = f"{sharpe_val:.2f}" if sharpe_val is not None else "N/A"
             stats_data.append({
                 'Strategia': strategy,
-                'Rend. Medio (%)': f"{returns.mean():+.1f}%",
-                'Mediana (%)': f"{returns.median():+.1f}%",
-                'Migliore (%)': f"{returns.max():+.1f}%",
-                'Peggiore (%)': f"{returns.min():+.1f}%",
-                'Std Dev (%)': f"{returns.std():.1f}%",
-                'Sharpe*': sharpe_str,
-                '% Positivi': f"{(returns > 0).mean() * 100:.1f}%"
+                'Rend. Medio (%)': round(returns.mean(), 1),
+                'Mediana (%)': round(returns.median(), 1),
+                'Migliore (%)': round(returns.max(), 1),
+                'Peggiore (%)': round(returns.min(), 1),
+                'Std Dev (%)': round(returns.std(), 1),
+                'Sharpe*': sharpe_val,
+                '% Positivi': round((returns > 0).mean() * 100, 1)
             })
         
-        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True)
+        bt_col_cfg = {
+            'Rend. Medio (%)': st.column_config.NumberColumn(format=".1f"),
+            'Mediana (%)': st.column_config.NumberColumn(format=".1f"),
+            'Migliore (%)': st.column_config.NumberColumn(format=".1f"),
+            'Peggiore (%)': st.column_config.NumberColumn(format=".1f"),
+            'Std Dev (%)': st.column_config.NumberColumn(format=".1f"),
+            'Sharpe*': st.column_config.NumberColumn(format=".2f"),
+            '% Positivi': st.column_config.NumberColumn(format=".1f"),
+        }
+        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True, column_config=bt_col_cfg)
         
         st.markdown("#### 📈 Distribuzione Rendimenti")
         
@@ -2228,13 +2253,13 @@ def main():
         for row in strategy_rows:
             entry_rows.append([
                 row['Livello'],
-                row['Prezzo Entry ($)'],
-                row['Sconto (%)'],
-                row['Prob. (%)'],
-                row.get('via BS (%)', '0.0%'),
-                row['BTC se eseguito'],
-                row['Valore Atteso (€)'],
-                row['Rend. Atteso (%)'],
+                f"${row['Prezzo Entry ($)']:,.0f}",
+                f"{row['Sconto (%)']:+.1f}%",
+                f"{row['Prob. (%)']:.1f}%",
+                f"{row.get('via BS (%)', 0):.1f}%",
+                f"{row['BTC se eseguito']:.4f}",
+                f"EUR {row['Valore Atteso (€)']:,.0f}",
+                f"{row['Rend. Atteso (%)']:+.1f}%",
             ])
         table(entry_headers, entry_rows, [30, 22, 22, 18, 18, 22, 30, 22])
         
@@ -2245,12 +2270,12 @@ def main():
         for row in split_rows:
             split_rows_pdf.append([
                 row['Strategia'],
-                row['Invest (%)'],
-                row['Riserva (%)'],
-                row['Prob. Esec. (%)'],
-                row['BTC Attesi'],
-                row['Valore Atteso (€)'],
-                row['Rend. Atteso (%)'],
+                f"{row['Invest (%)']:.0f}%",
+                f"{row['Riserva (%)']:.0f}%",
+                f"{row['Prob. Esec. (%)']:.1f}%",
+                f"{row['BTC Attesi']:.4f}",
+                f"EUR {row['Valore Atteso (€)']:,.0f}",
+                f"{row['Rend. Atteso (%)']:+.1f}%",
             ])
         table(split_headers, split_rows_pdf, [42, 18, 18, 22, 22, 32, 22])
         
