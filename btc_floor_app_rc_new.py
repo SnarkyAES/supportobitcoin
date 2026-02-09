@@ -64,7 +64,7 @@ def show_disclaimer_popup():
     with col2:
         st.markdown("## ⚠️ DISCLAIMER / AVVERTENZE")
         
-        st.error("**LEGGERE ATTENTAMENTE PRIMA DI PROCEDERE**")
+        st.error("**LEGGERE ATTENTAMENTE PRIMA DI PROCEDERE V6**")
         
         st.markdown("### 🇮🇹 Italiano")
         st.markdown("""
