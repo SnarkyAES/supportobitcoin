@@ -901,172 +901,83 @@ def main():
         
         st.markdown("""
         Analisi di scenari predefiniti basati su eventi storici o ipotetici.
-        **Cosa succederebbe se BTC crollasse del X% da oggi?**
         """)
         
         ath = df['Close'].max()
         
         scenarios = {
-            '🟡 Correzione Moderata': {'drawdown': -30, 'description': 'Correzione tipica in bull market', 'example': ''},
-            '🟠 Bear Market': {'drawdown': -50, 'description': 'Bear market standard', 'example': '2018, 2022'},
-            '🔴 Crash Severo': {'drawdown': -65, 'description': 'Crash violento', 'example': 'COVID Mar 2020'},
-            '⚫ Cigno Nero': {'drawdown': -80, 'description': 'Evento catastrofico', 'example': 'Mt.Gox 2014'},
-            '💀 Extinction Event': {'drawdown': -90, 'description': 'Scenario apocalittico', 'example': 'Ipotetico'},
+            '🟡 Correzione Moderata': {'drawdown': -30, 'description': 'Correzione tipica in bull market'},
+            '🟠 Bear Market': {'drawdown': -50, 'description': 'Bear market standard (2018, 2022)'},
+            '🔴 Crash Severo': {'drawdown': -65, 'description': 'Crash tipo COVID marzo 2020'},
+            '⚫ Cigno Nero': {'drawdown': -80, 'description': 'Evento catastrofico (tipo Mt.Gox 2014)'},
+            '💀 Extinction Event': {'drawdown': -90, 'description': 'Scenario apocalittico'},
         }
-        
-        st.markdown(f"### 💰 Prezzo attuale: **${CURRENT_PRICE:,.0f}**")
-        st.markdown(f"### 🏔️ ATH: **${ath:,.0f}**")
-        
-        st.markdown("---")
         
         stress_data = []
         for name, params in scenarios.items():
             dd = params['drawdown']
             price_from_current = CURRENT_PRICE * (1 + dd/100)
             price_from_ath = ath * (1 + dd/100)
-            
-            # Determine if below floors
-            below_q05 = "🔴 SÌ" if price_from_current < q05 else "🟢 NO"
-            below_q01 = "🔴 SÌ" if price_from_current < q01 else "🟢 NO"
-            below_nlb = "🔴 SÌ" if price_from_current < current_nlb else "🟢 NO"
+            vs_q05 = (price_from_current / q05 - 1) * 100
+            vs_q01 = (price_from_current / q01 - 1) * 100
             
             stress_data.append({
                 'Scenario': name,
                 'Drawdown': f"{dd}%",
-                '📉 Prezzo Raggiunto': f"${price_from_current:,.0f}",
+                'Da Oggi': f"${price_from_current:,.0f}",
                 'Da ATH': f"${price_from_ath:,.0f}",
-                'Sotto Q05?': below_q05,
-                'Sotto Q01?': below_q01,
-                'Sotto NLB?': below_nlb,
-                'Esempio Storico': params['example']
+                'vs Q05': f"{vs_q05:+.1f}%",
+                'vs Q01': f"{vs_q01:+.1f}%",
+                'Note': params['description']
             })
         
         st.dataframe(pd.DataFrame(stress_data), use_container_width=True, hide_index=True)
         
-        # Floor reference
-        st.markdown("---")
-        st.markdown("#### 📊 Riferimento Floor Attuali")
-        
-        floor_ref_col1, floor_ref_col2, floor_ref_col3 = st.columns(3)
-        with floor_ref_col1:
-            st.metric("Q05 Floor (5%)", f"${q05:,.0f}", f"{(CURRENT_PRICE/q05-1)*100:+.1f}% da oggi")
-        with floor_ref_col2:
-            st.metric("Q01 Floor (1%)", f"${q01:,.0f}", f"{(CURRENT_PRICE/q01-1)*100:+.1f}% da oggi")
-        with floor_ref_col3:
-            st.metric("NLB Floor", f"${current_nlb:,.0f}", f"{(CURRENT_PRICE/current_nlb-1)*100:+.1f}% da oggi")
-        
-        st.markdown("---")
-        
         # Visual stress test
-        st.markdown("#### 📈 Visualizzazione Livelli di Prezzo")
+        st.markdown("#### 📈 Visualizzazione Stress Levels")
         
         fig_stress = go.Figure()
         
-        # Current price
-        fig_stress.add_hline(
-            y=CURRENT_PRICE, 
-            line_dash="solid", 
-            line_color="#F7931A",
-            line_width=3,
-            annotation_text=f"💰 OGGI: ${CURRENT_PRICE:,.0f}",
-            annotation_position="right"
-        )
-        
-        # Floors
-        fig_stress.add_hline(
-            y=q05, 
-            line_dash="dash", 
-            line_color="#dc3545",
-            line_width=2,
-            annotation_text=f"Q05: ${q05:,.0f}",
-            annotation_position="right"
-        )
-        fig_stress.add_hline(
-            y=q01, 
-            line_dash="dash", 
-            line_color="#8B0000",
-            line_width=2,
-            annotation_text=f"Q01: ${q01:,.0f}",
-            annotation_position="right"
-        )
-        fig_stress.add_hline(
-            y=current_nlb, 
-            line_dash="dot", 
-            line_color="#ff6b6b",
-            line_width=2,
-            annotation_text=f"NLB: ${current_nlb:,.0f}",
-            annotation_position="right"
-        )
-        
-        # Stress scenario prices as bars
-        scenario_names = []
-        scenario_prices = []
-        scenario_colors = []
-        color_map = {'🟡': '#ffc107', '🟠': '#fd7e14', '🔴': '#dc3545', '⚫': '#6c757d', '💀': '#212529'}
-        
-        for name, params in scenarios.items():
-            price = CURRENT_PRICE * (1 + params['drawdown']/100)
-            scenario_names.append(f"{name}\n${price:,.0f}")
-            scenario_prices.append(price)
-            emoji = name.split()[0]
-            scenario_colors.append(color_map.get(emoji, '#888888'))
-        
-        fig_stress.add_trace(go.Bar(
-            x=scenario_names,
-            y=scenario_prices,
-            marker_color=scenario_colors,
-            text=[f"${p:,.0f}" for p in scenario_prices],
-            textposition='outside',
-            name='Prezzo Scenario'
+        # Current price line
+        fig_stress.add_trace(go.Scatter(
+            x=[0, 1], y=[CURRENT_PRICE, CURRENT_PRICE],
+            mode='lines', name=f'Prezzo Attuale (${CURRENT_PRICE:,.0f})',
+            line=dict(color='#F7931A', width=3)
         ))
         
+        # Floors
+        fig_stress.add_trace(go.Scatter(
+            x=[0, 1], y=[q01, q01],
+            mode='lines', name=f'Q01 Floor (${q01:,.0f})',
+            line=dict(color='#8B0000', width=2, dash='dash')
+        ))
+        fig_stress.add_trace(go.Scatter(
+            x=[0, 1], y=[q05, q05],
+            mode='lines', name=f'Q05 Floor (${q05:,.0f})',
+            line=dict(color='#dc3545', width=2, dash='dash')
+        ))
+        
+        # Stress scenarios
+        colors = ['#ffc107', '#fd7e14', '#dc3545', '#6f42c1', '#000000']
+        for i, (name, params) in enumerate(scenarios.items()):
+            price = CURRENT_PRICE * (1 + params['drawdown']/100)
+            fig_stress.add_trace(go.Scatter(
+                x=[0, 1], y=[price, price],
+                mode='lines', name=f"{name} (${price:,.0f})",
+                line=dict(color=colors[i], width=1, dash='dot')
+            ))
+        
         fig_stress.update_layout(
-            title='Prezzi Raggiunti in Ogni Scenario vs Floor',
-            yaxis_title='Prezzo ($)',
+            title='Stress Scenarios vs Floor Levels',
+            yaxis_title='Price ($)',
             yaxis_type='log',
             template='plotly_dark',
-            height=500,
-            showlegend=False,
+            height=400,
+            showlegend=True,
+            xaxis=dict(showticklabels=False)
         )
         
-        # Set y-axis range to show all levels
-        min_price = min(scenario_prices) * 0.8
-        max_price = CURRENT_PRICE * 1.2
-        fig_stress.update_yaxes(range=[np.log10(min_price), np.log10(max_price)])
-        
         st.plotly_chart(fig_stress, use_container_width=True)
-        
-        # Interpretation
-        st.markdown("#### 🎯 Interpretazione")
-        
-        # Find which scenario breaks which floor
-        breaks_q05 = None
-        breaks_q01 = None
-        breaks_nlb = None
-        
-        for name, params in scenarios.items():
-            price = CURRENT_PRICE * (1 + params['drawdown']/100)
-            if price < q05 and breaks_q05 is None:
-                breaks_q05 = (name, params['drawdown'], price)
-            if price < q01 and breaks_q01 is None:
-                breaks_q01 = (name, params['drawdown'], price)
-            if price < current_nlb and breaks_nlb is None:
-                breaks_nlb = (name, params['drawdown'], price)
-        
-        if breaks_q05:
-            st.warning(f"⚠️ **Q05 Floor (${q05:,.0f})** verrebbe violato da: **{breaks_q05[0]}** ({breaks_q05[1]}%) → ${breaks_q05[2]:,.0f}")
-        else:
-            st.success(f"✅ **Q05 Floor (${q05:,.0f})** regge in tutti gli scenari!")
-            
-        if breaks_q01:
-            st.warning(f"⚠️ **Q01 Floor (${q01:,.0f})** verrebbe violato da: **{breaks_q01[0]}** ({breaks_q01[1]}%) → ${breaks_q01[2]:,.0f}")
-        else:
-            st.success(f"✅ **Q01 Floor (${q01:,.0f})** regge in tutti gli scenari!")
-            
-        if breaks_nlb:
-            st.error(f"🚨 **NLB Floor (${current_nlb:,.0f})** verrebbe violato da: **{breaks_nlb[0]}** ({breaks_nlb[1]}%) → ${breaks_nlb[2]:,.0f}")
-        else:
-            st.success(f"✅ **NLB Floor (${current_nlb:,.0f})** regge in tutti gli scenari!")
     
     with bs_tab4:
         st.subheader("🔬 Extreme Value Theory (EVT)")
