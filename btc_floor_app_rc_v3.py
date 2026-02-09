@@ -1365,26 +1365,6 @@ def main():
     with strat_col3:
         target_price_2y = st.number_input("🎯 Target Price (stima)", min_value=50000, max_value=1000000, value=int(pl_fair * 1.5), step=10000)
     
-    # Black Swan toggle for entry strategy
-    es_bs_col1, es_bs_col2, es_bs_col3 = st.columns([1, 1, 1])
-    with es_bs_col1:
-        es_include_bs = st.toggle("🦢 Includi Black Swan nella simulazione", value=False,
-                                  help="Se attivo, le simulazioni MC includono eventi Black Swan che possono creare opportunità di acquisto a prezzi molto bassi.")
-    with es_bs_col2:
-        if es_include_bs:
-            es_bs_prob = st.slider("Prob. BS (%)", 1, 20, 5, key="es_bs_prob") / 100
-        else:
-            es_bs_prob = 0.0
-    with es_bs_col3:
-        if es_include_bs:
-            es_bs_impact = st.slider("Impatto BS (%)", -80, -30, -50, key="es_bs_impact") / 100
-            es_bs_buy_pct = st.slider("% Budget da investire durante BS", 10, 100, 50, 10, 
-                                       key="es_bs_buy_pct",
-                                       help="Quota del budget non ancora investito da usare se il prezzo scende sotto un floor durante un Black Swan.") / 100
-        else:
-            es_bs_impact = -0.50
-            es_bs_buy_pct = 0.50
-    
     # Define entry levels
     entry_levels = {
         'Prezzo Attuale': CURRENT_PRICE,
@@ -1405,22 +1385,14 @@ def main():
     with strat_tab1:
         st.subheader("📊 Probabilità di Raggiungimento & Rendimento Atteso")
         
-        if es_include_bs:
-            st.markdown(f"""
-            **Simulazione Monte Carlo + 🦢 Black Swan**: Probabilità di raggiungere ogni livello nei prossimi **{horizon_months} mesi**.  
-            BS: {es_bs_prob*100:.0f}% prob., {es_bs_impact*100:.0f}% impatto. Durante BS, investi {es_bs_buy_pct*100:.0f}% del budget residuo se il prezzo tocca un floor.
-            """)
-        else:
-            st.markdown(f"""
-            **Simulazione Monte Carlo**: Qual è la probabilità che BTC tocchi ogni livello nei prossimi **{horizon_months} mesi**?
-            """)
+        st.markdown(f"""
+        **Simulazione Monte Carlo**: Qual è la probabilità che BTC tocchi ogni livello nei prossimi **{horizon_months} mesi**?
+        """)
         
-        # MC with optional Black Swan
+        # Run Monte Carlo to calculate probabilities
         @st.cache_data(ttl=3600)
-        def calculate_entry_probabilities_bs(_df_close, current_price, floor_params_tuple, 
-                                              n_sims=10000, horizon_days=730, seed=42,
-                                              include_bs=False, bs_prob=0.05, bs_impact=-0.50):
-            """Calculate probability of reaching each floor level with optional Black Swan (chunked)"""
+        def calculate_entry_probabilities(_df_close, _df_days, current_price, today_days, floor_params, qr_params, n_sims=10000, horizon_days=730, seed=42):
+            """Calculate probability of reaching each floor level (chunked vectorization)"""
             rng = np.random.RandomState(seed)
             
             df_temp = pd.DataFrame({'Close': _df_close})
@@ -1429,101 +1401,61 @@ def main():
             sigma_n = log_ret[log_ret.abs() < 1.5*sigma].std()
             sigma_s = log_ret[log_ret.abs() >= 1.5*sigma].std()
             
-            floor_params = dict(floor_params_tuple)
-            floor_prices = np.array(list(floor_params.values()))
-            floor_names = list(floor_params.keys())
-            n_levels = len(floor_names)
-            
             CHUNK = min(n_sims, 2000)
-            total_reached = np.zeros(n_levels, dtype=int)
-            total_reached_in_bs = np.zeros(n_levels, dtype=int)
-            all_final = []
+            all_min_prices = []
+            all_final_prices = []
             
             remaining = n_sims
             while remaining > 0:
                 chunk_size = min(CHUNK, remaining)
                 remaining -= chunk_size
                 
-                # Generate shocks
                 regime_draws = rng.random((chunk_size, horizon_days))
                 vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
                 shocks = rng.normal(mu, 1.0, (chunk_size, horizon_days)) * vols
                 
-                # Black Swan setup
-                if include_bs:
-                    has_bs = rng.random(chunk_size) < bs_prob
-                    bs_days = np.where(has_bs, rng.randint(1, max(horizon_days // 2, 2), size=chunk_size), -1)
-                    bs_shocks_arr = bs_impact + rng.uniform(-0.10, 0.05, chunk_size)
-                else:
-                    has_bs = np.zeros(chunk_size, dtype=bool)
-                    bs_days = np.full(chunk_size, -1)
-                    bs_shocks_arr = np.zeros(chunk_size)
-                
                 prices = np.full(chunk_size, current_price)
                 min_prices = np.full(chunk_size, current_price)
-                bs_occurred = np.zeros(chunk_size, dtype=bool)
-                # Track if min was reached during BS recovery window (30 days after BS)
-                min_during_bs = np.zeros(chunk_size, dtype=bool)
                 
                 for t in range(horizon_days):
-                    d = t + 1
-                    # Black swan event
-                    bs_today = has_bs & (bs_days == d) & (~bs_occurred)
-                    if bs_today.any():
-                        prices[bs_today] = prices[bs_today] * (1 + bs_shocks_arr[bs_today])
-                        bs_occurred[bs_today] = True
-                    
-                    normal_mask = ~bs_today
-                    prices[normal_mask] = prices[normal_mask] * np.exp(shocks[normal_mask, t])
-                    
-                    # Track new minimums and whether they occurred during BS
-                    new_min_mask = prices < min_prices
-                    in_bs_window = bs_occurred & (d <= bs_days + 60)  # 60-day BS window
-                    min_during_bs[new_min_mask & in_bs_window] = True
-                    min_during_bs[new_min_mask & ~in_bs_window] = False
+                    prices = prices * np.exp(shocks[:, t])
                     min_prices = np.minimum(min_prices, prices)
                 
-                all_final.append(prices.copy())
-                
-                # Count reached per level
-                for j in range(n_levels):
-                    reached_mask = min_prices <= floor_prices[j]
-                    total_reached[j] += np.sum(reached_mask)
-                    total_reached_in_bs[j] += np.sum(reached_mask & min_during_bs)
+                all_min_prices.append(min_prices)
+                all_final_prices.append(prices)
             
-            all_final_arr = np.concatenate(all_final)
-            avg_final = float(np.mean(all_final_arr))
+            all_min = np.concatenate(all_min_prices)
+            all_final = np.concatenate(all_final_prices)
             
             prob_data = []
-            for j, (level, level_price) in enumerate(floor_params.items()):
-                prob = total_reached[j] / n_sims
-                prob_via_bs = total_reached_in_bs[j] / n_sims
+            for level, level_price in floor_params.items():
+                reached = np.sum(all_min <= level_price)
+                prob = reached / n_sims
+                avg_final = float(np.mean(all_final))
+                
                 prob_data.append({
                     'level': level,
                     'price': level_price,
                     'probability': prob,
-                    'prob_via_bs': prob_via_bs,
                     'avg_final_price': avg_final
                 })
             
             return pd.DataFrame(prob_data)
         
         with st.spinner("Calcolando probabilità..."):
-            prob_df = calculate_entry_probabilities_bs(
-                df['Close'].values, CURRENT_PRICE,
-                tuple(entry_levels.items()),
-                n_sims=10000, horizon_days=int(horizon_months * 30.44), seed=mc_seed,
-                include_bs=es_include_bs, bs_prob=es_bs_prob, bs_impact=es_bs_impact
+            prob_df = calculate_entry_probabilities(
+                df['Close'].values, df['Days'].values,
+                CURRENT_PRICE, TODAY_DAYS, entry_levels, qr_models,
+                n_sims=10000, horizon_days=int(horizon_months * 30.44), seed=mc_seed
             )
         
-        # Calculate expected value for each strategy - use numeric values for sorting
-        strategy_rows = []
+        # Calculate expected value for each strategy
+        strategy_data = []
         
         for _, row in prob_df.iterrows():
             level = row['level']
             entry_price = row['price']
             prob_reach = row['probability']
-            prob_via_bs = row['prob_via_bs']
             
             if level == 'Prezzo Attuale':
                 btc_bought = budget / entry_price
@@ -1534,55 +1466,34 @@ def main():
                 prob_execute = prob_reach
                 if prob_reach > 0:
                     btc_bought = budget / entry_price
-                    # If BS enabled, some entries happen during BS at even lower prices (bonus)
-                    if es_include_bs and prob_via_bs > 0:
-                        # Portion entered during BS gets extra discount
-                        prob_normal = prob_reach - prob_via_bs
-                        ev_normal = prob_normal * (btc_bought * target_price_2y)
-                        # During BS, you enter with es_bs_buy_pct of budget at floor price
-                        btc_bs = (budget * es_bs_buy_pct) / entry_price
-                        ev_bs = prob_via_bs * (btc_bs * target_price_2y)
-                        cash_remaining = (1 - prob_normal) * budget - prob_via_bs * (budget * es_bs_buy_pct)
-                        cash_remaining = max(cash_remaining, 0)
-                        expected_final_value = ev_normal + ev_bs + cash_remaining
-                    else:
-                        expected_final_value = prob_reach * (btc_bought * target_price_2y) + (1 - prob_reach) * budget
+                    expected_final_value = prob_reach * (btc_bought * target_price_2y) + (1 - prob_reach) * budget
                     expected_return = (expected_final_value / budget - 1) * 100
                 else:
                     expected_final_value = budget
-                    expected_return = 0.0
+                    expected_return = 0
                 btc_bought = budget / entry_price if prob_reach > 0 else 0
             
-            sconto = (entry_price / CURRENT_PRICE - 1) * 100
+            if prob_execute >= 0.8:
+                risk = "🟢 Basso"
+            elif prob_execute >= 0.5:
+                risk = "🟡 Medio"
+            elif prob_execute >= 0.2:
+                risk = "🟠 Alto"
+            else:
+                risk = "🔴 Molto Alto"
             
-            strategy_rows.append({
+            strategy_data.append({
                 'Livello': level,
-                'Prezzo Entry ($)': round(entry_price, 0),
-                'Sconto (%)': round(sconto, 1),
-                'Prob. (%)': round(prob_reach * 100, 1),
-                'BTC Acquistati': round(budget / entry_price, 6) if entry_price > 0 else 0,
-                'Valore Atteso (€)': round(expected_final_value, 0),
-                'Rend. Atteso (%)': round(expected_return, 1),
+                'Prezzo Entry': f"${entry_price:,.0f}",
+                'Sconto da Oggi': f"{(entry_price/CURRENT_PRICE - 1)*100:+.1f}%",
+                'Prob. Raggiung.': f"{prob_reach*100:.1f}%",
+                'BTC Acquistati': f"{budget/entry_price:.6f}",
+                'Valore Atteso': f"€{expected_final_value:,.0f}",
+                'Rend. Atteso': f"{expected_return:+.1f}%",
+                'Rischio': risk
             })
-            if es_include_bs:
-                strategy_rows[-1]['di cui via BS (%)'] = round(prob_via_bs * 100, 1)
         
-        strat_df = pd.DataFrame(strategy_rows)
-        
-        # Column config for proper formatting AND sorting
-        col_config = {
-            'Livello': st.column_config.TextColumn('Livello'),
-            'Prezzo Entry ($)': st.column_config.NumberColumn('Prezzo Entry ($)', format="$%,.0f"),
-            'Sconto (%)': st.column_config.NumberColumn('Sconto (%)', format="%+.1f%%"),
-            'Prob. (%)': st.column_config.NumberColumn('Prob. (%)', format="%.1f%%"),
-            'BTC Acquistati': st.column_config.NumberColumn('BTC Acquistati', format="%.6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn('Valore Atteso (€)', format="€%,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn('Rend. Atteso (%)', format="%+.1f%%"),
-        }
-        if es_include_bs:
-            col_config['di cui via BS (%)'] = st.column_config.NumberColumn('di cui via BS (%)', format="%.1f%%")
-        
-        st.dataframe(strat_df, width="stretch", hide_index=True, column_config=col_config)
+        st.dataframe(pd.DataFrame(strategy_data), width="stretch", hide_index=True)
         
         st.markdown("---")
         st.markdown("### 🔀 Strategie Split (Diversificate)")
@@ -1620,20 +1531,13 @@ def main():
             
             split_data.append({
                 'Strategia': strat['name'],
-                'Prob. Esec. (%)': round(executed_pct * 100, 1),
-                'BTC Attesi': round(total_btc, 6),
-                'Valore Atteso (€)': round(total_expected, 0),
-                'Rend. Atteso (%)': round(expected_return, 1)
+                'Prob. Esec.': f"{executed_pct*100:.1f}%",
+                'BTC Attesi': f"{total_btc:.6f}",
+                'Valore Atteso': f"€{total_expected:,.0f}",
+                'Rend. Atteso': f"{expected_return:+.1f}%"
             })
         
-        split_col_config = {
-            'Strategia': st.column_config.TextColumn('Strategia'),
-            'Prob. Esec. (%)': st.column_config.NumberColumn('Prob. Esec. (%)', format="%.1f%%"),
-            'BTC Attesi': st.column_config.NumberColumn('BTC Attesi', format="%.6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn('Valore Atteso (€)', format="€%,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn('Rend. Atteso (%)', format="%+.1f%%"),
-        }
-        st.dataframe(pd.DataFrame(split_data), width="stretch", hide_index=True, column_config=split_col_config)
+        st.dataframe(pd.DataFrame(split_data), width="stretch", hide_index=True)
     
     with strat_tab2:
         st.subheader("📈 Backtest Storico")
@@ -1754,28 +1658,19 @@ def main():
         for strategy in bt_results.columns:
             returns = bt_results[strategy]
             excess = returns - period_rf * 100  # convert to percentage
-            sharpe_val = excess.mean() / returns.std() if returns.std() > 0 else None
+            sharpe = f"{excess.mean() / returns.std():.2f}" if returns.std() > 0 else "N/A"
             stats_data.append({
                 'Strategia': strategy,
-                'Rend. Medio (%)': round(returns.mean(), 1),
-                'Mediana (%)': round(returns.median(), 1),
-                'Migliore (%)': round(returns.max(), 1),
-                'Peggiore (%)': round(returns.min(), 1),
-                'Std Dev (%)': round(returns.std(), 1),
-                'Sharpe*': round(sharpe_val, 2) if sharpe_val is not None else None,
-                '% Positivi': round((returns > 0).mean() * 100, 1)
+                'Rend. Medio': f"{returns.mean():+.1f}%",
+                'Mediana': f"{returns.median():+.1f}%",
+                'Migliore': f"{returns.max():+.1f}%",
+                'Peggiore': f"{returns.min():+.1f}%",
+                'Std Dev': f"{returns.std():.1f}%",
+                'Sharpe*': sharpe,
+                '% Positivi': f"{(returns > 0).mean()*100:.1f}%"
             })
         
-        bt_stats_config = {
-            'Rend. Medio (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Mediana (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Migliore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Peggiore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Std Dev (%)': st.column_config.NumberColumn(format="%.1f%%"),
-            'Sharpe*': st.column_config.NumberColumn(format="%.2f"),
-            '% Positivi': st.column_config.NumberColumn(format="%.1f%%"),
-        }
-        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True, column_config=bt_stats_config)
+        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True)
         
         st.markdown("#### 📈 Distribuzione Rendimenti")
         
