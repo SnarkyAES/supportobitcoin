@@ -1541,13 +1541,13 @@ def main():
             })
         
         col_cfg = {
-            'Prezzo Entry ($)': st.column_config.NumberColumn(format=",.0f"),
-            'Sconto (%)': st.column_config.NumberColumn(format=".1f"),
+            'Prezzo Entry ($)': st.column_config.NumberColumn(format="$,.0f"),
+            'Sconto (%)': st.column_config.NumberColumn(format="+.1f"),
             'Prob. (%)': st.column_config.NumberColumn(format=".1f"),
             'via BS (%)': st.column_config.NumberColumn(format=".1f"),
             'BTC se eseguito': st.column_config.NumberColumn(format=".6f"),
             'Valore Atteso (€)': st.column_config.NumberColumn(format=",.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn(format=".1f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format="+.1f"),
         }
         st.dataframe(pd.DataFrame(strategy_rows), width="stretch", hide_index=True, column_config=col_cfg)
         
@@ -1610,7 +1610,7 @@ def main():
             'Prob. Esec. (%)': st.column_config.NumberColumn(format=".1f"),
             'BTC Attesi': st.column_config.NumberColumn(format=".6f"),
             'Valore Atteso (€)': st.column_config.NumberColumn(format=",.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn(format=".1f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format="+.1f"),
         }
         st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True, column_config=split_cfg)
         
@@ -1749,10 +1749,10 @@ def main():
             })
         
         bt_col_cfg = {
-            'Rend. Medio (%)': st.column_config.NumberColumn(format=".1f"),
-            'Mediana (%)': st.column_config.NumberColumn(format=".1f"),
-            'Migliore (%)': st.column_config.NumberColumn(format=".1f"),
-            'Peggiore (%)': st.column_config.NumberColumn(format=".1f"),
+            'Rend. Medio (%)': st.column_config.NumberColumn(format="+.1f"),
+            'Mediana (%)': st.column_config.NumberColumn(format="+.1f"),
+            'Migliore (%)': st.column_config.NumberColumn(format="+.1f"),
+            'Peggiore (%)': st.column_config.NumberColumn(format="+.1f"),
             'Std Dev (%)': st.column_config.NumberColumn(format=".1f"),
             'Sharpe*': st.column_config.NumberColumn(format=".2f"),
             '% Positivi': st.column_config.NumberColumn(format=".1f"),
@@ -2307,7 +2307,7 @@ def main():
             "All models are statistical estimates, not predictions. "
             "Past performance does not guarantee future results. This is NOT financial advice.")
         
-        return bytes(pdf.output())
+        return pdf.output()
     
     if st.button("📄 Genera Report PDF per AI", type="primary", use_container_width=True):
         with st.spinner("Generando PDF..."):
