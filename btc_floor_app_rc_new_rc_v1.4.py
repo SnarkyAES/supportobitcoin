@@ -1536,7 +1536,7 @@ def main():
                 'Prob. (%)': f"{prob_reach * 100:.1f}%",
                 'via BS (%)': f"{prob_bs * 100:.1f}%",
                 'BTC se eseguito': f"{btc_bought:.6f}",
-                'Valore Atteso (EUR)': f"EUR {ev:,.0f}",
+                'Valore Atteso (€)': f"€{ev:,.0f}",
                 'Rend. Atteso (%)': f"{expected_return:+.1f}%",
             })
         
@@ -1591,7 +1591,7 @@ def main():
                 'Riserva (%)': f"{reserve_pct * 100:.0f}%",
                 'Prob. Esec. (%)': f"{executed_pct * 100:.1f}%",
                 'BTC Attesi': f"{total_btc:.6f}",
-                'Valore Atteso (EUR)': f"EUR {total_ev:,.0f}",
+                'Valore Atteso (€)': f"€{total_ev:,.0f}",
                 'Rend. Atteso (%)': f"{expected_return:+.1f}%",
             })
         
@@ -1910,7 +1910,7 @@ def main():
                 ladder_data.append({
                     'Livello': name,
                     'Prezzo': f"${price:,.0f}",
-                    'Importo': f"EUR {budget*0.25:,.0f}",
+                    'Importo': f"€{budget*0.25:,.0f}",
                     'BTC': f"{btc:.6f}"
                 })
             st.dataframe(pd.DataFrame(ladder_data), width="stretch", hide_index=True)
@@ -2233,7 +2233,7 @@ def main():
                 row['Prob. (%)'],
                 row.get('via BS (%)', '0.0%'),
                 row['BTC se eseguito'],
-                row['Valore Atteso (EUR)'],
+                row['Valore Atteso (€)'],
                 row['Rend. Atteso (%)'],
             ])
         table(entry_headers, entry_rows, [30, 22, 22, 18, 18, 22, 30, 22])
@@ -2249,7 +2249,7 @@ def main():
                 row['Riserva (%)'],
                 row['Prob. Esec. (%)'],
                 row['BTC Attesi'],
-                row['Valore Atteso (EUR)'],
+                row['Valore Atteso (€)'],
                 row['Rend. Atteso (%)'],
             ])
         table(split_headers, split_rows_pdf, [42, 18, 18, 22, 22, 32, 22])
