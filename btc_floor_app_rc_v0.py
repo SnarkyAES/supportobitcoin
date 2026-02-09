@@ -491,8 +491,7 @@ def main():
         st.title("⚙️ Settings")
         
         start_year = st.selectbox("Start Year", [2010, 2011, 2012, 2013, 2014, 2015], index=3)
-        mc_sims = st.slider("Monte Carlo Simulations", 1000, 50000, 5000, 1000,
-                            help="5k per analisi rapida, 20k+ per percentili estremi accurati. >20k può essere lento.")
+        mc_sims = st.slider("Monte Carlo Simulations", 1000, 10000, 5000, 1000)
         projection_years = st.slider("Projection (years)", 1, 5, 2)
         
         st.markdown("---")
@@ -616,47 +615,6 @@ def main():
         <span style="font-size: 1rem; font-weight: normal;">{signal_desc}</span>
     </div>
     """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Halving Cycle Indicator
-    HALVING_DATES = [
-        pd.Timestamp('2012-11-28'),
-        pd.Timestamp('2016-07-09'),
-        pd.Timestamp('2020-05-11'),
-        pd.Timestamp('2024-04-20'),
-    ]
-    # Estimate next halving (~4 years after last)
-    NEXT_HALVING_EST = HALVING_DATES[-1] + pd.Timedelta(days=4*365)
-    
-    last_halving = HALVING_DATES[-1]
-    days_since_halving = (TODAY - last_halving).days
-    days_to_next_halving = (NEXT_HALVING_EST - TODAY).days
-    cycle_progress = days_since_halving / (days_since_halving + max(days_to_next_halving, 1)) * 100
-    
-    # Cycle phase interpretation
-    if cycle_progress < 25:
-        cycle_phase = "🟢 Accumulo Post-Halving"
-        cycle_note = "Fase storica favorevole"
-    elif cycle_progress < 50:
-        cycle_phase = "🟢 Bull Run"
-        cycle_note = "Storicamente fase di crescita rapida"
-    elif cycle_progress < 75:
-        cycle_phase = "🟡 Maturità del Ciclo"
-        cycle_note = "Possibili top, cautela crescente"
-    else:
-        cycle_phase = "🟠 Fine Ciclo / Pre-Halving"
-        cycle_note = "Storicamente fase di consolidamento/correzione"
-    
-    cycle_col1, cycle_col2, cycle_col3, cycle_col4 = st.columns(4)
-    with cycle_col1:
-        st.metric("⛏️ Ultimo Halving", last_halving.strftime('%Y-%m-%d'), f"{days_since_halving} giorni fa")
-    with cycle_col2:
-        st.metric("⏳ Prossimo Halving (est.)", NEXT_HALVING_EST.strftime('%Y-%m'), f"~{days_to_next_halving} giorni")
-    with cycle_col3:
-        st.metric("📍 Progresso Ciclo", f"{cycle_progress:.0f}%", cycle_phase)
-    with cycle_col4:
-        st.metric("📊 Fase", cycle_note)
     
     st.markdown("---")
     
@@ -800,10 +758,6 @@ def main():
             periods['2Y'] = 730
         if projection_years >= 3:
             periods['3Y'] = 1095
-        if projection_years >= 4:
-            periods['4Y'] = 1461
-        if projection_years >= 5:
-            periods['5Y'] = 1826
         
         proj_data = {'Floor': []}
         for p in periods.keys():
@@ -892,19 +846,14 @@ def main():
     st.markdown("""
     Un **Cigno Nero** è un evento raro, imprevedibile e ad alto impatto che può violare anche i floor più conservativi.
     Questa sezione analizza scenari estremi per stress-testing del portafoglio.
-    
-    📊 **Riferimenti storici**: Flash crash BTC >30% in 1-3 giorni: ~5-6 volte dal 2010 (~1 ogni 2.5 anni).
-    Crash finanziari tradizionali (1929, 1987, 2008, COVID): ~3-4 per secolo (~3-4%/anno).
     """)
     
     # Black Swan Settings
     bs_col1, bs_col2, bs_col3 = st.columns(3)
     with bs_col1:
-        bs_probability = st.slider("🎲 Probabilità Black Swan (%)", 1, 20, 5,
-                                   help="BTC storico: ~35-40% su 2 anni. Mercati trad: 3-4%/anno. Default 5% = conservativo per 2Y.") / 100
+        bs_probability = st.slider("🎲 Probabilità Black Swan (%)", 1, 20, 5) / 100
     with bs_col2:
-        bs_impact = st.slider("💥 Impatto Black Swan (%)", -80, -30, -50,
-                              help="Flash crash BTC storici: -30% a -50% in giorni. Worst case: -80% (Mt.Gox 2014).")
+        bs_impact = st.slider("💥 Impatto Black Swan (%)", -80, -30, -50)
     with bs_col3:
         bs_sims = st.slider("🔄 Simulazioni", 1000, 10000, 5000, 1000)
     
@@ -1691,30 +1640,7 @@ def main():
         dist_to_q10 = (CURRENT_PRICE / entry_levels['Q10 Floor'] - 1) * 100
         dist_to_q05 = (CURRENT_PRICE / entry_levels['Q05 Floor'] - 1) * 100
         
-        # Black Swan risk adjustment
-        # Use BS parameters from the sidebar (default 5% prob, -50% impact)
-        bs_annual_prob = bs_probability  # already set in sidebar
-        horizon_years_strat = horizon_months / 12
-        # Probability of at least one BS event in the horizon
-        prob_no_bs = (1 - bs_annual_prob) ** horizon_years_strat
-        prob_bs_horizon = 1 - prob_no_bs
-        
-        # Tail-risk adjusted expected value multiplier
-        # If BS happens, expected drawdown from entry price
-        bs_expected_loss = bs_impact / 100  # e.g. -0.50
-        # Adjust target: with prob_bs chance, you lose bs_impact; otherwise target stands
-        risk_adj_factor = (1 - prob_bs_horizon) + prob_bs_horizon * (1 + bs_expected_loss * 0.5)  # partial recovery assumed
-        
-        st.markdown(f"""
-        #### 🦢 Fattore di Rischio Black Swan
-        - **Prob. BS nell'orizzonte ({horizon_months}m)**: {prob_bs_horizon*100:.1f}%
-        - **Impatto BS configurato**: {bs_impact}%
-        - **Fattore aggiustamento rischio**: {risk_adj_factor:.2f}x
-        """)
-        
-        st.markdown("---")
-        
-        # Decision logic (enhanced with BS awareness)
+        # Decision logic
         if dist_to_q10 <= 5:
             rec_emoji = "🟢"
             rec_text = "COMPRA ORA (Lump Sum)"
@@ -1741,13 +1667,6 @@ def main():
             rec_reason = f"Bassa probabilità di dip significativi (Q10: {prob_q10*100:.0f}%)."
             recommendation = "LUMP_SUM"
         
-        # If Black Swan risk is high (>15%), suggest more cautious approach
-        if prob_bs_horizon > 0.15 and recommendation == "LUMP_SUM":
-            rec_emoji = "🟡"
-            rec_text = "50% ORA + 50% A Q10 (risk-adjusted)"
-            rec_reason += f" ⚠️ Ma il rischio BS è elevato ({prob_bs_horizon*100:.0f}% nell'orizzonte): consigliato split."
-            recommendation = "SPLIT_Q10"
-        
         st.success(f"## {rec_emoji} {rec_text}")
         st.info(f"**Motivazione**: {rec_reason}")
         
@@ -1756,15 +1675,14 @@ def main():
         
         if recommendation == "LUMP_SUM":
             btc_amount = budget / CURRENT_PRICE
-            target_value = btc_amount * target_price_2y * risk_adj_factor
             st.markdown(f"""
-            | Azione | Valore | Risk-Adjusted |
-            |--------|--------|---------------|
-            | 💶 Investi | €{budget:,} | |
-            | 💰 Prezzo | ${CURRENT_PRICE:,.0f} | |
-            | ₿ BTC | {btc_amount:.6f} | |
-            | 🎯 Valore a target | €{btc_amount * target_price_2y:,.0f} | €{target_value:,.0f} |
-            | 📈 Rendimento | {(target_price_2y/CURRENT_PRICE - 1)*100:+.1f}% | {(target_value/budget - 1)*100:+.1f}% |
+            | Azione | Valore |
+            |--------|--------|
+            | 💶 Investi | €{budget:,} |
+            | 💰 Prezzo | ${CURRENT_PRICE:,.0f} |
+            | ₿ BTC | {btc_amount:.6f} |
+            | 🎯 Valore a target | €{btc_amount * target_price_2y:,.0f} |
+            | 📈 Rendimento | {(target_price_2y/CURRENT_PRICE - 1)*100:+.1f}% |
             """)
             
         elif recommendation == "SPLIT_Q10":
@@ -1786,7 +1704,7 @@ def main():
             | ₿ BTC | {btc_q10:.6f} |
             | 📊 Probabilità | {prob_q10*100:.0f}% |
             
-            **Risultato se Q10 raggiunto**: {btc_now + btc_q10:.6f} BTC → €{(btc_now + btc_q10) * target_price_2y:,.0f} (€{(btc_now + btc_q10) * target_price_2y * risk_adj_factor:,.0f} risk-adj.)
+            **Risultato se Q10 raggiunto**: {btc_now + btc_q10:.6f} BTC → €{(btc_now + btc_q10) * target_price_2y:,.0f}
             """)
             
         elif recommendation == "LADDER":
@@ -1803,50 +1721,11 @@ def main():
                 })
             st.dataframe(pd.DataFrame(ladder_data), use_container_width=True, hide_index=True)
         
-        # Sensitivity analysis: how recommendation changes with different seeds
-        st.markdown("---")
-        st.markdown("### 🔀 Sensitivity Analysis (Robustezza)")
-        st.caption("Come cambiano le probabilità MC con seed diversi? Se i risultati sono stabili, il modello è robusto.")
-        
-        sensitivity_seeds = [mc_seed, mc_seed + 1, mc_seed + 7, mc_seed + 42, mc_seed + 100]
-        sens_results = []
-        for s_seed in sensitivity_seeds:
-            rng_sens = np.random.RandomState(s_seed)
-            # Quick MC (fewer sims for speed)
-            log_ret_sens = np.log(df['Close'] / df['Close'].shift(1)).dropna()
-            mu_s, sigma_s_all = log_ret_sens.mean(), log_ret_sens.std()
-            sigma_n_s = log_ret_sens[log_ret_sens.abs() < 1.5*sigma_s_all].std()
-            sigma_s_s = log_ret_sens[log_ret_sens.abs() >= 1.5*sigma_s_all].std()
-            
-            reached_q10, reached_q05 = 0, 0
-            n_quick = 3000
-            for _ in range(n_quick):
-                price_s = CURRENT_PRICE
-                min_p_s = CURRENT_PRICE
-                for d in range(1, int(horizon_months * 30.44) + 1):
-                    vol_s = sigma_s_s if rng_sens.random() < 0.15 else sigma_n_s
-                    price_s = price_s * np.exp(rng_sens.normal(mu_s, vol_s))
-                    if price_s < min_p_s:
-                        min_p_s = price_s
-                if min_p_s <= entry_levels['Q10 Floor']:
-                    reached_q10 += 1
-                if min_p_s <= entry_levels['Q05 Floor']:
-                    reached_q05 += 1
-            
-            sens_results.append({
-                'Seed': s_seed,
-                'P(Q10)': f"{reached_q10/n_quick*100:.1f}%",
-                'P(Q05)': f"{reached_q05/n_quick*100:.1f}%"
-            })
-        
-        st.dataframe(pd.DataFrame(sens_results), use_container_width=True, hide_index=True)
-        
         st.markdown("---")
         st.error("""
         ⚠️ **ATTENZIONE**: Questa è un'analisi quantitativa basata su modelli statistici.
         - I modelli possono essere sbagliati
         - Il passato non garantisce il futuro
-        - Il fattore Black Swan è un'approssimazione, non una previsione
         - **Investi solo ciò che puoi permetterti di perdere**
         """)
     
