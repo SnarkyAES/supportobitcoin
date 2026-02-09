@@ -17,8 +17,6 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from datetime import datetime
 import time
-from io import BytesIO
-import io
 
 # ============================================================================
 # PAGE CONFIG
@@ -1548,13 +1546,13 @@ def main():
             })
         
         col_cfg = {
-            'Prezzo Entry ($)': st.column_config.NumberColumn(format="$,.0f"),
-            'Sconto (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Prob. (%)': st.column_config.NumberColumn(format=".1f"),
-            'via BS (%)': st.column_config.NumberColumn(format=".1f"),
-            'BTC se eseguito': st.column_config.NumberColumn(format=".6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn(format="$,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn(format="+.1f"),
+            'Prezzo Entry ($)': st.column_config.NumberColumn(format="$%,.0f"),
+            'Sconto (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Prob. (%)': st.column_config.NumberColumn(format="%.1f%%"),
+            'via BS (%)': st.column_config.NumberColumn(format="%.1f%%"),
+            'BTC se eseguito': st.column_config.NumberColumn(format="%.6f"),
+            'Valore Atteso (€)': st.column_config.NumberColumn(format="€%,.0f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format="%+.1f%%"),
         }
         st.dataframe(pd.DataFrame(strategy_rows), width="stretch", hide_index=True, column_config=col_cfg)
         
@@ -1612,12 +1610,12 @@ def main():
             })
         
         split_cfg = {
-            'Invest (%)': st.column_config.NumberColumn(format=".0f"),
-            'Riserva (%)': st.column_config.NumberColumn(format=".0f"),
-            'Prob. Esec. (%)': st.column_config.NumberColumn(format=".1f"),
-            'BTC Attesi': st.column_config.NumberColumn(format=".6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn(format="$,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn(format="+.1f"),
+            'Invest (%)': st.column_config.NumberColumn(format="%.0f%%"),
+            'Riserva (%)': st.column_config.NumberColumn(format="%.0f%%"),
+            'Prob. Esec. (%)': st.column_config.NumberColumn(format="%.1f%%"),
+            'BTC Attesi': st.column_config.NumberColumn(format="%.6f"),
+            'Valore Atteso (€)': st.column_config.NumberColumn(format="€%,.0f"),
+            'Rend. Atteso (%)': st.column_config.NumberColumn(format="%+.1f%%"),
         }
         st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True, column_config=split_cfg)
         
@@ -1756,13 +1754,13 @@ def main():
             })
         
         bt_col_cfg = {
-            'Rend. Medio (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Mediana (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Migliore (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Peggiore (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Std Dev (%)': st.column_config.NumberColumn(format=".1f"),
-            'Sharpe*': st.column_config.NumberColumn(format=".2f"),
-            '% Positivi': st.column_config.NumberColumn(format=".1f"),
+            'Rend. Medio (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Mediana (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Migliore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Peggiore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Std Dev (%)': st.column_config.NumberColumn(format="%.1f%%"),
+            'Sharpe*': st.column_config.NumberColumn(format="%.2f"),
+            '% Positivi': st.column_config.NumberColumn(format="%.1f%%"),
         }
         st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True, column_config=bt_col_cfg)
         
@@ -2049,9 +2047,9 @@ def main():
             })
         
         ceil_col_cfg = {
-            'Prezzo ($)': st.column_config.NumberColumn(format="$,.0f"),
-            'vs Oggi (%)': st.column_config.NumberColumn(format="+.1f"),
-            'Valore Portfolio ($)': st.column_config.NumberColumn(format="$,.0f"),
+            'Prezzo ($)': st.column_config.NumberColumn(format="$%,.0f"),
+            'vs Oggi (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+            'Valore Portfolio ($)': st.column_config.NumberColumn(format="$%,.0f"),
         }
         st.dataframe(pd.DataFrame(ceiling_data), width="stretch", hide_index=True, column_config=ceil_col_cfg)
         
@@ -2108,7 +2106,7 @@ def main():
         # Format columns
         exit_proj_cfg = {}
         for p in exit_periods.keys():
-            exit_proj_cfg[p] = st.column_config.NumberColumn(format="$,.0f")
+            exit_proj_cfg[p] = st.column_config.NumberColumn(format="$%,.0f")
         
         st.dataframe(pd.DataFrame(exit_proj_data), width="stretch", hide_index=True, column_config=exit_proj_cfg)
         
@@ -2145,7 +2143,7 @@ def main():
             yaxis_title='Prezzo ($)', yaxis_type='log',
             template='plotly_dark', height=500, hovermode='x unified'
         )
-        st.plotly_chart(fig_exit, width="stretch")
+        st.plotly_chart(fig_exit, use_container_width=True)
     
     with exit_tab3:
         st.subheader("📋 Piano di Uscita Personalizzato")
@@ -2184,10 +2182,10 @@ def main():
                 })
             
             exit_ladder_cfg = {
-                'Prezzo Target ($)': st.column_config.NumberColumn(format="$,.0f"),
-                'BTC da Vendere': st.column_config.NumberColumn(format=".6f"),
-                'Valore se Raggiunto ($)': st.column_config.NumberColumn(format="$,.0f"),
-                'Prob. Appross. (%)': st.column_config.NumberColumn(format=".0f"),
+                'Prezzo Target ($)': st.column_config.NumberColumn(format="$%,.0f"),
+                'BTC da Vendere': st.column_config.NumberColumn(format="%.6f"),
+                'Valore se Raggiunto ($)': st.column_config.NumberColumn(format="$%,.0f"),
+                'Prob. Appross. (%)': st.column_config.NumberColumn(format="%.0f%%"),
             }
             st.dataframe(pd.DataFrame(ladder_exit_data), width="stretch", hide_index=True, column_config=exit_ladder_cfg)
             
@@ -2217,9 +2215,9 @@ def main():
                 })
             
             target_cfg = {
-                'Target ($)': st.column_config.NumberColumn(format="$,.0f"),
-                'Gain (%)': st.column_config.NumberColumn(format="+.1f"),
-                'Valore Portfolio ($)': st.column_config.NumberColumn(format="$,.0f"),
+                'Target ($)': st.column_config.NumberColumn(format="$%,.0f"),
+                'Gain (%)': st.column_config.NumberColumn(format="%+.1f%%"),
+                'Valore Portfolio ($)': st.column_config.NumberColumn(format="$%,.0f"),
             }
             st.dataframe(pd.DataFrame(target_data), width="stretch", hide_index=True, column_config=target_cfg)
             
@@ -2258,11 +2256,11 @@ def main():
                 })
             
             tp_cfg = {
-                'Vendita (%)': st.column_config.NumberColumn(format=".0f"),
-                'BTC Venduti': st.column_config.NumberColumn(format=".6f"),
-                'Prezzo ($)': st.column_config.NumberColumn(format="$,.0f"),
-                'Incasso ($)': st.column_config.NumberColumn(format="$,.0f"),
-                'BTC Residui': st.column_config.NumberColumn(format=".6f"),
+                'Vendita (%)': st.column_config.NumberColumn(format="%.0f%%"),
+                'BTC Venduti': st.column_config.NumberColumn(format="%.6f"),
+                'Prezzo ($)': st.column_config.NumberColumn(format="$%,.0f"),
+                'Incasso ($)': st.column_config.NumberColumn(format="$%,.0f"),
+                'BTC Residui': st.column_config.NumberColumn(format="%.6f"),
             }
             st.dataframe(pd.DataFrame(tp_data), width="stretch", hide_index=True, column_config=tp_cfg)
             
@@ -2375,299 +2373,6 @@ def main():
         L'analisi del multiplo rispetto al Fair Value (Price/PL_Fair) fornisce un ulteriore 
         indicatore: storicamente, BTC raramente rimane sopra 3x il fair value per più di pochi giorni.
         """)
-    
-    # ============================================================================
-    # PDF EXPORT FOR AI ANALYSIS
-    # ============================================================================
-    st.markdown("---")
-    st.header("📄 Esporta Report per Analisi AI")
-    st.markdown("Genera un PDF strutturato contenente tutti i dati e un prompt professionale da dare in pasto a un'AI per ottenere un'analisi completa.")
-    
-    def generate_ai_report_pdf():
-        """Generate a comprehensive PDF report structured as an AI analysis prompt"""
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib import colors
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
-        from reportlab.lib.units import mm
-        
-        buf = BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=20*mm, bottomMargin=15*mm, leftMargin=15*mm, rightMargin=15*mm)
-        styles = getSampleStyleSheet()
-        
-        # Custom styles
-        styles.add(ParagraphStyle('SectionHead', parent=styles['Heading2'], textColor=colors.HexColor('#F7931A'), spaceAfter=6))
-        styles.add(ParagraphStyle('DataBlock', parent=styles['Code'], fontSize=8, leading=10, spaceAfter=4))
-        styles.add(ParagraphStyle('Prompt', parent=styles['Normal'], fontSize=9, leading=12, backColor=colors.HexColor('#f0f0f0'), borderPadding=8, spaceAfter=8))
-        styles.add(ParagraphStyle('SmallNote', parent=styles['Normal'], fontSize=7, textColor=colors.HexColor('#666666')))
-        
-        story = []
-        
-        # Title
-        story.append(Paragraph("BITCOIN FLOOR ANALYSIS - AI ANALYSIS REPORT", styles['Title']))
-        story.append(Paragraph(f"Generated: {TODAY.strftime('%Y-%m-%d %H:%M UTC')} | BTC Price: ${CURRENT_PRICE:,.0f}", styles['Normal']))
-        story.append(Spacer(1, 8))
-        
-        # AI PROMPT SECTION
-        story.append(Paragraph("PROMPT PER ANALISI AI", styles['SectionHead']))
-        
-        prompt_text = (
-            "You are a quantitative finance analyst specializing in cryptocurrency markets. "
-            "Below is a comprehensive dataset from a Bitcoin Floor Analysis tool that uses Power Law regression, "
-            "Quantile Regression on historical LOW and HIGH prices, Monte Carlo simulations with regime-switching "
-            "volatility, and Extreme Value Theory (EVT). "
-            "<br/><br/>"
-            "Please analyze this data and provide:<br/>"
-            "1. <b>Current Market Position</b>: Where is BTC relative to its floor/ceiling models? Is it cheap, fair, or expensive?<br/>"
-            "2. <b>Entry Strategy Assessment</b>: Given the Monte Carlo probabilities, which entry strategy offers the best risk-adjusted expected value? Consider the reserve fund allocation for Black Swan events.<br/>"
-            "3. <b>Exit Strategy Assessment</b>: Based on the ceiling models, what is the optimal exit ladder for the given time horizon?<br/>"
-            "4. <b>Risk Analysis</b>: What are the key risks the models may be underestimating? How does the halving cycle phase affect the outlook?<br/>"
-            "5. <b>Model Limitations</b>: Identify potential weaknesses in the methodology.<br/>"
-            "6. <b>Actionable Recommendations</b>: Provide specific, time-bound recommendations with confidence levels.<br/>"
-            "<br/>Base your analysis ONLY on the data provided below. Do not hallucinate or assume data not present."
-        )
-        story.append(Paragraph(prompt_text, styles['Prompt']))
-        story.append(Spacer(1, 6))
-        
-        # MARKET DATA
-        story.append(Paragraph("1. MARKET SNAPSHOT", styles['SectionHead']))
-        market_data = [
-            ["Metric", "Value"],
-            ["Current Price (USD)", f"${CURRENT_PRICE:,.0f}"],
-            ["Date", TODAY.strftime('%Y-%m-%d')],
-            ["Days Since Genesis (2009-01-03)", f"{TODAY_DAYS:,}"],
-            ["NLB Floor (Never Look Back)", f"${current_nlb:,.0f}"],
-            ["PL Fair Value", f"${pl_fair:,.0f}"],
-            ["PL Lower Band (-1 sigma)", f"${pl_lower:,.0f}"],
-            ["PL Upper Band (+1 sigma)", f"${pl_upper:,.0f}"],
-            ["Price / PL Fair Value", f"{CURRENT_PRICE/pl_fair:.2f}x"],
-        ]
-        t = Table(market_data, colWidths=[180, 200])
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F7931A')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ]))
-        story.append(t)
-        story.append(Spacer(1, 8))
-        
-        # HALVING CYCLE
-        story.append(Paragraph("2. HALVING CYCLE", styles['SectionHead']))
-        halving_data = [
-            ["Metric", "Value"],
-            ["Last Halving", last_halving.strftime('%Y-%m-%d')],
-            ["Days Since Halving", f"{days_since_halving}"],
-            ["Next Halving (est.)", NEXT_HALVING_EST.strftime('%Y-%m')],
-            ["Cycle Progress", f"{cycle_progress:.1f}%"],
-        ]
-        if cycle_progress < 25:
-            halving_data.append(["Phase", "Accumulation Post-Halving (historically bullish)"])
-        elif cycle_progress < 50:
-            halving_data.append(["Phase", "Bull Run (historically rapid growth)"])
-        elif cycle_progress < 75:
-            halving_data.append(["Phase", "Cycle Maturity (possible tops, increasing caution)"])
-        else:
-            halving_data.append(["Phase", "Late Cycle / Pre-Halving (historically consolidation)"])
-        t2 = Table(halving_data, colWidths=[180, 200])
-        t2.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F7931A')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-        ]))
-        story.append(t2)
-        story.append(Spacer(1, 8))
-        
-        # FLOOR MODELS
-        story.append(Paragraph("3. FLOOR MODELS (Quantile Regression on LOG(LOW) prices)", styles['SectionHead']))
-        floor_table = [["Quantile", "Floor Price (USD)", "Distance from Current", "Slope (b)", "SE(b)", "p-value"]]
-        for q in quantiles:
-            qm = qr_models[q]
-            floor_p = predict_pl(TODAY_DAYS, qm['a'], qm['b'])
-            dist = (CURRENT_PRICE / floor_p - 1) * 100
-            floor_table.append([
-                f"Q{int(q*100):02d}",
-                f"${floor_p:,.0f}",
-                f"+{dist:.1f}% above",
-                f"{qm['b']:.4f}",
-                f"{qm['se_slope']:.4f}",
-                f"{qm['pval_slope']:.2e}"
-            ])
-        t3 = Table(floor_table, colWidths=[55, 85, 85, 60, 60, 65])
-        t3.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ]))
-        story.append(t3)
-        story.append(Spacer(1, 8))
-        
-        # CEILING MODELS
-        story.append(Paragraph("4. CEILING MODELS (Quantile Regression on LOG(HIGH) prices)", styles['SectionHead']))
-        ceil_table = [["Quantile", "Ceiling Price (USD)", "Distance from Current", "Slope (b)", "Interpretation"]]
-        for q in upper_quantiles:
-            qm = qr_upper[q]
-            ceil_p = predict_pl(TODAY_DAYS, qm['a'], qm['b'])
-            dist = (ceil_p / CURRENT_PRICE - 1) * 100
-            ceil_table.append([
-                f"Q{int(q*100)}",
-                f"${ceil_p:,.0f}",
-                f"{dist:+.1f}%",
-                f"{qm['b']:.4f}",
-                f"Price exceeds this only {(1-q)*100:.0f}% of time"
-            ])
-        t4 = Table(ceil_table, colWidths=[55, 95, 80, 60, 150])
-        t4.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#dc3545')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (3, -1), 'RIGHT'),
-        ]))
-        story.append(t4)
-        story.append(Spacer(1, 8))
-        
-        # POWER LAW MODEL
-        story.append(Paragraph("5. POWER LAW OLS MODEL (on CLOSE prices)", styles['SectionHead']))
-        pl_text = (
-            f"Formula: Price = a * Days^b<br/>"
-            f"a = {pl_standard['a']:.6e}, b = {pl_standard['b']:.4f}, "
-            f"R-squared = {pl_standard['r2']:.4f}, Residual sigma = {pl_standard['residual_std']:.4f}<br/>"
-            f"Fair Value today = ${pl_fair:,.0f}, "
-            f"Lower band (-1 sigma) = ${pl_lower:,.0f}, "
-            f"Upper band (+1 sigma) = ${pl_upper:,.0f}"
-        )
-        story.append(Paragraph(pl_text, styles['DataBlock']))
-        story.append(Spacer(1, 6))
-        
-        # CEILING PROJECTIONS
-        story.append(Paragraph("6. CEILING PROJECTIONS (1-5 Year)", styles['SectionHead']))
-        proj_table = [["Ceiling"] + [f"+{y}Y" for y in range(1, 6)]]
-        for q in upper_quantiles:
-            row = [f"Q{int(q*100)}"]
-            for y in range(1, 6):
-                val = predict_pl(TODAY_DAYS + y * 365, qr_upper[q]['a'], qr_upper[q]['b'])
-                row.append(f"${val:,.0f}")
-            proj_table.append(row)
-        # Add PL Fair
-        row_fair = ["PL Fair"]
-        for y in range(1, 6):
-            val = predict_pl(TODAY_DAYS + y * 365, pl_standard['a'], pl_standard['b'])
-            row_fair.append(f"${val:,.0f}")
-        proj_table.append(row_fair)
-        
-        t5 = Table(proj_table, colWidths=[55] + [75]*5)
-        t5.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#17a2b8')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ]))
-        story.append(t5)
-        story.append(Spacer(1, 8))
-        
-        story.append(PageBreak())
-        
-        # FLOOR PROJECTIONS
-        story.append(Paragraph("7. FLOOR PROJECTIONS (1-5 Year)", styles['SectionHead']))
-        floor_proj_table = [["Floor"] + [f"+{y}Y" for y in range(1, 6)]]
-        for q in quantiles:
-            row = [f"Q{int(q*100):02d}"]
-            for y in range(1, 6):
-                val = predict_pl(TODAY_DAYS + y * 365, qr_models[q]['a'], qr_models[q]['b'])
-                row.append(f"${val:,.0f}")
-            floor_proj_table.append(row)
-        
-        t6 = Table(floor_proj_table, colWidths=[55] + [75]*5)
-        t6.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#28a745')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ]))
-        story.append(t6)
-        story.append(Spacer(1, 8))
-        
-        # ENTRY STRATEGY DATA
-        story.append(Paragraph(f"8. ENTRY STRATEGY ANALYSIS (Budget: EUR {budget:,.0f}, Horizon: {horizon_months}m, Target: ${target_price_2y:,.0f})", styles['SectionHead']))
-        story.append(Paragraph(f"Reserve: {reserve_pct*100:.0f}% (EUR {budget_reserve:,.0f}) | BS Prob: {es_bs_prob*100:.0f}% | BS Impact: {es_bs_impact*100:.0f}%", styles['DataBlock']))
-        
-        entry_table = [["Level", "Entry $", "Discount", "Prob.", "via BS", "BTC", "EV (EUR)", "Exp. Ret."]]
-        for row in strategy_rows:
-            entry_table.append([
-                row['Livello'],
-                f"${row['Prezzo Entry ($)']:,.0f}",
-                f"{row['Sconto (%)']:+.1f}%",
-                f"{row['Prob. (%)']:.1f}%",
-                f"{row.get('via BS (%)', 0):.1f}%",
-                f"{row['BTC se eseguito']:.6f}",
-                f"EUR {row['Valore Atteso (€)']:,.0f}",
-                f"{row['Rend. Atteso (%)']:+.1f}%",
-            ])
-        t7 = Table(entry_table, colWidths=[65, 60, 50, 40, 40, 55, 65, 50])
-        t7.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#6f42c1')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#FFFFFF')),
-            ('FONTSIZE', (0, 0), (-1, -1), 7),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CCCCCC')),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-        ]))
-        story.append(t7)
-        story.append(Spacer(1, 8))
-        
-        # METHODOLOGY NOTES
-        story.append(Paragraph("9. METHODOLOGY NOTES FOR AI", styles['SectionHead']))
-        method_text = (
-            "<b>Quantile Regression</b>: Fits specific percentiles of log(price) vs log(days) using Huber sandwich SE. "
-            "Lower quantiles (Q01-Q20) fitted on daily LOW prices define floors. "
-            "Upper quantiles (Q80-Q99) fitted on daily HIGH prices define ceilings.<br/><br/>"
-            "<b>Monte Carlo</b>: Regime-switching model with normal (85%) and stress (15%) volatility regimes. "
-            "Soft floor bounce at 85% of power law floor (70% bounce probability, 30% pass-through). "
-            "Black Swan events: single shock within first half of horizon. Chunked vectorization for memory efficiency.<br/><br/>"
-            "<b>EVT</b>: Generalized Pareto Distribution on losses exceeding 90th percentile. "
-            "30-day VaR scaled via sqrt(t) approximation (known limitation for autocorrelated assets).<br/><br/>"
-            "<b>NLB (Never Look Back)</b>: Highest price that was never revisited. Last ~6 months are provisional.<br/><br/>"
-            "<b>Known Limitations</b>: MC assumes i.i.d. returns (no momentum/mean-reversion). "
-            "Regime threshold (1.5 sigma) is fixed, not GARCH-adaptive. "
-            "Power Law may break down if Bitcoin adoption dynamics fundamentally change. "
-            "Floor models are backward-looking; structural breaks could invalidate them."
-        )
-        story.append(Paragraph(method_text, styles['SmallNote']))
-        story.append(Spacer(1, 12))
-        
-        story.append(Paragraph(
-            "This report was auto-generated by BTC Floor Analysis tool. All models are statistical estimates, not predictions. "
-            "Past performance does not guarantee future results. This is NOT financial advice.",
-            styles['SmallNote']
-        ))
-        
-        doc.build(story)
-        buf.seek(0)
-        return buf.getvalue()
-    
-    if st.button("📄 Genera Report PDF per AI", type="primary", use_container_width=True):
-        with st.spinner("Generando PDF..."):
-            try:
-                pdf_bytes = generate_ai_report_pdf()
-                st.download_button(
-                    label="⬇️ Scarica Report PDF",
-                    data=pdf_bytes,
-                    file_name=f"BTC_Floor_Analysis_{TODAY.strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-                st.success("✅ Report generato! Clicca il bottone sopra per scaricarlo.")
-            except Exception as e:
-                st.error(f"Errore nella generazione del PDF: {e}")
-                st.info("Assicurati che `reportlab` sia nel requirements.txt")
-    
-    st.caption("Il PDF contiene un prompt strutturato e tutti i dati necessari. Può essere dato in pasto a Claude, GPT-4, o qualsiasi LLM per ottenere un'analisi finanziaria approfondita.")
     
     # Footer
     st.markdown("---")
