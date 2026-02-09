@@ -949,7 +949,7 @@ def main():
         bs_impact = st.slider("💥 Impatto Black Swan (%)", -80, -30, -50,
                               help="Flash crash BTC storici: -30% a -50% in giorni. Worst case: -80% (Mt.Gox 2014).")
     with bs_col3:
-        bs_sims = st.slider("🔄 Simulazioni", 1000, 10000, 5000, 1000)
+        bs_sims = st.slider("🔄 Simulazioni", 1000, 50000, 5000, 1000)
     
     # Tabs for different analyses
     bs_tab1, bs_tab2, bs_tab3, bs_tab4 = st.tabs([
