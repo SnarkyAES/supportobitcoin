@@ -267,48 +267,30 @@ def compute_nlb(df):
     return df
 
 def monte_carlo_min(df, floor_model, n_sims=5000, horizon=730, seed=42):
-    """Monte Carlo simulation for minimum price (vectorized)"""
+    """Monte Carlo simulation for minimum price"""
     rng = np.random.RandomState(seed)
     log_ret = np.log(df['Close'] / df['Close'].shift(1)).dropna()
     mu, sigma = log_ret.mean(), log_ret.std()
     sigma_n = log_ret[log_ret.abs() < 1.5*sigma].std()
     sigma_s = log_ret[log_ret.abs() >= 1.5*sigma].std()
     p0, d0 = df['Close'].iloc[-1], df['Days'].iloc[-1]
-    a, b = floor_model['a'], floor_model['b']
     
-    # Pre-compute floors for all days (horizon,)
-    days_arr = np.arange(1, horizon + 1)
-    floors = a * ((d0 + days_arr) ** b)  # (horizon,)
-    
-    # Pre-generate all random numbers at once
-    regime_draws = rng.random((n_sims, horizon))          # regime selection
-    vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)  # (n_sims, horizon)
-    shocks = rng.normal(mu, 1.0, (n_sims, horizon)) * vols  # scale by chosen vol
-    
-    # Soft floor random draws
-    bounce_draws = rng.random((n_sims, horizon))          # bounce probability
-    bounce_levels = rng.uniform(0.0, 0.20, (n_sims, horizon))  # bounce magnitude
-    
-    # Simulate paths step by step (vectorized across sims, loop over time)
-    prices = np.full(n_sims, p0)
-    min_prices = np.full(n_sims, p0)
-    min_days = np.zeros(n_sims, dtype=int)
-    
-    for t in range(horizon):
-        prices = prices * np.exp(shocks[:, t])
-        
-        # Soft floor: probabilistic bounce
-        floor_t = floors[t]
-        below_floor = prices < floor_t * 0.85
-        bounces = below_floor & (bounce_draws[:, t] < 0.70)
-        prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
-        
-        # Track minimums
-        new_min = prices < min_prices
-        min_prices[new_min] = prices[new_min]
-        min_days[new_min] = t + 1
-    
-    return pd.DataFrame({'min_price': min_prices, 'min_day': min_days})
+    results = []
+    for _ in range(n_sims):
+        price, min_p, min_d = p0, p0, 0
+        for d in range(1, horizon+1):
+            vol = sigma_s if rng.random() < 0.15 else sigma_n
+            floor = predict_pl(d0+d, floor_model['a'], floor_model['b'])
+            price = price * np.exp(rng.normal(mu, vol))
+            # Soft floor: probabilistic bounce (not hard wall)
+            if price < floor * 0.85:
+                # 70% chance of bounce, 30% chance of further decline
+                if rng.random() < 0.70:
+                    price = floor * (0.85 + rng.uniform(0, 0.20))
+            if price < min_p:
+                min_p, min_d = price, d
+        results.append({'min_price': min_p, 'min_day': min_d})
+    return pd.DataFrame(results)
 
 def analyze_historical_crashes(df):
     """Analyze historical drawdowns and crashes"""
@@ -365,7 +347,7 @@ def analyze_historical_crashes(df):
 def monte_carlo_black_swan(df, floor_model, n_sims=5000, horizon=730, 
                             black_swan_prob=0.05, black_swan_impact=-0.50, seed=42):
     """
-    Monte Carlo with Black Swan events (vectorized).
+    Monte Carlo with Black Swan events.
     Black swan = sudden extreme drop that can violate floors.
     """
     rng = np.random.RandomState(seed)
@@ -374,62 +356,49 @@ def monte_carlo_black_swan(df, floor_model, n_sims=5000, horizon=730,
     sigma_n = log_ret[log_ret.abs() < 1.5*sigma].std()
     sigma_s = log_ret[log_ret.abs() >= 1.5*sigma].std()
     p0, d0 = df['Close'].iloc[-1], df['Days'].iloc[-1]
-    a, b = floor_model['a'], floor_model['b']
     
-    # Pre-compute floors
-    days_arr = np.arange(1, horizon + 1)
-    floors = a * ((d0 + days_arr) ** b)
-    
-    # Black swan setup (vectorized per simulation)
-    has_bs = rng.random(n_sims) < black_swan_prob                      # (n_sims,)
-    bs_days = np.where(has_bs, rng.randint(1, max(horizon // 2, 2), size=n_sims), -1)  # (n_sims,)
-    bs_shocks = black_swan_impact + rng.uniform(-0.10, 0.05, n_sims)   # (n_sims,)
-    
-    # Pre-generate random numbers
-    regime_draws = rng.random((n_sims, horizon))
-    vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-    normal_shocks = rng.normal(mu, 1.0, (n_sims, horizon)) * vols
-    bounce_draws = rng.random((n_sims, horizon))
-    bounce_levels = rng.uniform(0.0, 0.20, (n_sims, horizon))
-    
-    # Simulate
-    prices = np.full(n_sims, p0)
-    min_prices = np.full(n_sims, p0)
-    min_days = np.zeros(n_sims, dtype=int)
-    bs_occurred = np.zeros(n_sims, dtype=bool)
-    
-    for t in range(horizon):
-        d = t + 1  # 1-indexed day
+    results = []
+    for sim in range(n_sims):
+        price, min_p, min_d = p0, p0, 0
+        black_swan_occurred = False
+        black_swan_day = 0
         
-        # Black swan event on this day
-        bs_today = has_bs & (bs_days == d) & (~bs_occurred)
-        if bs_today.any():
-            prices[bs_today] = prices[bs_today] * (1 + bs_shocks[bs_today])
-            bs_occurred[bs_today] = True
+        # Decide if black swan happens in this simulation
+        has_black_swan = rng.random() < black_swan_prob
+        if has_black_swan:
+            # Black swan occurs at random day in first half of horizon
+            black_swan_day = rng.randint(1, horizon // 2)
         
-        # Normal dynamics for non-BS sims on this step
-        normal_mask = ~bs_today
-        prices[normal_mask] = prices[normal_mask] * np.exp(normal_shocks[normal_mask, t])
+        for d in range(1, horizon+1):
+            # Check for black swan event
+            if has_black_swan and d == black_swan_day and not black_swan_occurred:
+                # Black swan: sudden crash
+                shock = black_swan_impact + rng.uniform(-0.10, 0.05)
+                price = price * (1 + shock)
+                black_swan_occurred = True
+            else:
+                # Normal dynamics
+                vol = sigma_s if rng.random() < 0.15 else sigma_n
+                price = price * np.exp(rng.normal(mu, vol))
+            
+            # NO floor bounce during black swan recovery (first 30 days after)
+            if not (black_swan_occurred and d < black_swan_day + 30):
+                floor = predict_pl(d0+d, floor_model['a'], floor_model['b'])
+                # Soft floor: probabilistic bounce
+                if price < floor * 0.85:
+                    if rng.random() < 0.70:
+                        price = floor * (0.85 + rng.uniform(0, 0.20))
+            
+            if price < min_p:
+                min_p, min_d = price, d
         
-        # Floor bounce (skip during BS recovery: first 30 days after BS)
-        in_recovery = bs_occurred & (d < bs_days + 30)
-        can_bounce = ~in_recovery
-        
-        floor_t = floors[t]
-        below_floor = can_bounce & (prices < floor_t * 0.85)
-        bounces = below_floor & (bounce_draws[:, t] < 0.70)
-        prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
-        
-        # Track minimums
-        new_min = prices < min_prices
-        min_prices[new_min] = prices[new_min]
-        min_days[new_min] = d
+        results.append({
+            'min_price': min_p, 
+            'min_day': min_d,
+            'black_swan': black_swan_occurred
+        })
     
-    return pd.DataFrame({
-        'min_price': min_prices, 
-        'min_day': min_days,
-        'black_swan': bs_occurred
-    })
+    return pd.DataFrame(results)
 
 def calculate_evt_floor(df, confidence=0.99, horizon_days=30):
     """
@@ -1380,7 +1349,7 @@ def main():
         # Run Monte Carlo to calculate probabilities
         @st.cache_data(ttl=3600)
         def calculate_entry_probabilities(_df_close, _df_days, current_price, today_days, floor_params, qr_params, n_sims=10000, horizon_days=730, seed=42):
-            """Calculate probability of reaching each floor level (vectorized)"""
+            """Calculate probability of reaching each floor level"""
             rng = np.random.RandomState(seed)
             
             df_temp = pd.DataFrame({'Close': _df_close})
@@ -1389,27 +1358,30 @@ def main():
             sigma_n = log_ret[log_ret.abs() < 1.5*sigma].std()
             sigma_s = log_ret[log_ret.abs() >= 1.5*sigma].std()
             
-            # Pre-generate all random numbers
-            regime_draws = rng.random((n_sims, horizon_days))
-            vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-            shocks = rng.normal(mu, 1.0, (n_sims, horizon_days)) * vols
+            # Track if each level is reached
+            results = {level: {'reached': 0, 'final_prices': []} for level in floor_params.keys()}
             
-            # Simulate all paths (vectorized across sims, loop over time)
-            prices = np.full(n_sims, current_price)
-            min_prices = np.full(n_sims, current_price)
+            for _ in range(n_sims):
+                price = current_price
+                min_price = current_price
+                
+                for d in range(1, horizon_days + 1):
+                    vol = sigma_s if rng.random() < 0.15 else sigma_n
+                    price = price * np.exp(rng.normal(mu, vol))
+                    if price < min_price:
+                        min_price = price
+                
+                final_price = price
+                
+                for level, level_price in floor_params.items():
+                    if min_price <= level_price:
+                        results[level]['reached'] += 1
+                    results[level]['final_prices'].append(final_price)
             
-            for t in range(horizon_days):
-                prices = prices * np.exp(shocks[:, t])
-                min_prices = np.minimum(min_prices, prices)
-            
-            final_prices = prices
-            
-            # Calculate probabilities for each level
             prob_data = []
             for level, level_price in floor_params.items():
-                reached = np.sum(min_prices <= level_price)
-                prob = reached / n_sims
-                avg_final = float(np.mean(final_prices))
+                prob = results[level]['reached'] / n_sims
+                avg_final = np.mean(results[level]['final_prices'])
                 
                 prob_data.append({
                     'level': level,
@@ -1838,31 +1810,28 @@ def main():
         
         sensitivity_seeds = [mc_seed, mc_seed + 1, mc_seed + 7, mc_seed + 42, mc_seed + 100]
         sens_results = []
-        
-        # Pre-compute return stats once
-        log_ret_sens = np.log(df['Close'] / df['Close'].shift(1)).dropna()
-        mu_s, sigma_s_all = log_ret_sens.mean(), log_ret_sens.std()
-        sigma_n_s = log_ret_sens[log_ret_sens.abs() < 1.5*sigma_s_all].std()
-        sigma_s_s = log_ret_sens[log_ret_sens.abs() >= 1.5*sigma_s_all].std()
-        n_quick = 3000
-        h_days = int(horizon_months * 30.44)
-        
         for s_seed in sensitivity_seeds:
             rng_sens = np.random.RandomState(s_seed)
+            # Quick MC (fewer sims for speed)
+            log_ret_sens = np.log(df['Close'] / df['Close'].shift(1)).dropna()
+            mu_s, sigma_s_all = log_ret_sens.mean(), log_ret_sens.std()
+            sigma_n_s = log_ret_sens[log_ret_sens.abs() < 1.5*sigma_s_all].std()
+            sigma_s_s = log_ret_sens[log_ret_sens.abs() >= 1.5*sigma_s_all].std()
             
-            # Vectorized quick MC
-            regime_d = rng_sens.random((n_quick, h_days))
-            v = np.where(regime_d < 0.15, sigma_s_s, sigma_n_s)
-            sh = rng_sens.normal(mu_s, 1.0, (n_quick, h_days)) * v
-            
-            p = np.full(n_quick, CURRENT_PRICE)
-            min_p = np.full(n_quick, CURRENT_PRICE)
-            for t in range(h_days):
-                p = p * np.exp(sh[:, t])
-                min_p = np.minimum(min_p, p)
-            
-            reached_q10 = np.sum(min_p <= entry_levels['Q10 Floor'])
-            reached_q05 = np.sum(min_p <= entry_levels['Q05 Floor'])
+            reached_q10, reached_q05 = 0, 0
+            n_quick = 3000
+            for _ in range(n_quick):
+                price_s = CURRENT_PRICE
+                min_p_s = CURRENT_PRICE
+                for d in range(1, int(horizon_months * 30.44) + 1):
+                    vol_s = sigma_s_s if rng_sens.random() < 0.15 else sigma_n_s
+                    price_s = price_s * np.exp(rng_sens.normal(mu_s, vol_s))
+                    if price_s < min_p_s:
+                        min_p_s = price_s
+                if min_p_s <= entry_levels['Q10 Floor']:
+                    reached_q10 += 1
+                if min_p_s <= entry_levels['Q05 Floor']:
+                    reached_q05 += 1
             
             sens_results.append({
                 'Seed': s_seed,
