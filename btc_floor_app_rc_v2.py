@@ -105,7 +105,7 @@ def show_disclaimer_popup():
         
         col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
         with col_btn2:
-            if st.button("🚀 **ACCEDI / ENTER**", type="primary", disabled=not accept, width="stretch"):
+            if st.button("🚀 **ACCEDI / ENTER**", type="primary", disabled=not accept, use_container_width=True):
                 st.session_state.disclaimer_accepted = True
                 st.rerun()
         
@@ -267,7 +267,7 @@ def compute_nlb(df):
     return df
 
 def monte_carlo_min(df, floor_model, n_sims=5000, horizon=730, seed=42):
-    """Monte Carlo simulation for minimum price (chunked vectorization for memory safety)"""
+    """Monte Carlo simulation for minimum price (vectorized)"""
     rng = np.random.RandomState(seed)
     log_ret = np.log(df['Close'] / df['Close'].shift(1)).dropna()
     mu, sigma = log_ret.mean(), log_ret.std()
@@ -278,45 +278,37 @@ def monte_carlo_min(df, floor_model, n_sims=5000, horizon=730, seed=42):
     
     # Pre-compute floors for all days (horizon,)
     days_arr = np.arange(1, horizon + 1)
-    floors = a * ((d0 + days_arr) ** b)
+    floors = a * ((d0 + days_arr) ** b)  # (horizon,)
     
-    # Process in chunks to limit memory (~50MB per chunk max)
-    CHUNK = min(n_sims, 2000)
-    all_min_prices = []
-    all_min_days = []
+    # Pre-generate all random numbers at once
+    regime_draws = rng.random((n_sims, horizon))          # regime selection
+    vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)  # (n_sims, horizon)
+    shocks = rng.normal(mu, 1.0, (n_sims, horizon)) * vols  # scale by chosen vol
     
-    remaining = n_sims
-    while remaining > 0:
-        chunk_size = min(CHUNK, remaining)
-        remaining -= chunk_size
-        
-        regime_draws = rng.random((chunk_size, horizon))
-        vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-        shocks = rng.normal(mu, 1.0, (chunk_size, horizon)) * vols
-        bounce_draws = rng.random((chunk_size, horizon))
-        bounce_levels = rng.uniform(0.0, 0.20, (chunk_size, horizon))
-        
-        prices = np.full(chunk_size, p0)
-        min_prices = np.full(chunk_size, p0)
-        min_days = np.zeros(chunk_size, dtype=int)
-        
-        for t in range(horizon):
-            prices = prices * np.exp(shocks[:, t])
-            floor_t = floors[t]
-            below_floor = prices < floor_t * 0.85
-            bounces = below_floor & (bounce_draws[:, t] < 0.70)
-            prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
-            new_min = prices < min_prices
-            min_prices[new_min] = prices[new_min]
-            min_days[new_min] = t + 1
-        
-        all_min_prices.append(min_prices)
-        all_min_days.append(min_days)
+    # Soft floor random draws
+    bounce_draws = rng.random((n_sims, horizon))          # bounce probability
+    bounce_levels = rng.uniform(0.0, 0.20, (n_sims, horizon))  # bounce magnitude
     
-    return pd.DataFrame({
-        'min_price': np.concatenate(all_min_prices),
-        'min_day': np.concatenate(all_min_days)
-    })
+    # Simulate paths step by step (vectorized across sims, loop over time)
+    prices = np.full(n_sims, p0)
+    min_prices = np.full(n_sims, p0)
+    min_days = np.zeros(n_sims, dtype=int)
+    
+    for t in range(horizon):
+        prices = prices * np.exp(shocks[:, t])
+        
+        # Soft floor: probabilistic bounce
+        floor_t = floors[t]
+        below_floor = prices < floor_t * 0.85
+        bounces = below_floor & (bounce_draws[:, t] < 0.70)
+        prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
+        
+        # Track minimums
+        new_min = prices < min_prices
+        min_prices[new_min] = prices[new_min]
+        min_days[new_min] = t + 1
+    
+    return pd.DataFrame({'min_price': min_prices, 'min_day': min_days})
 
 def analyze_historical_crashes(df):
     """Analyze historical drawdowns and crashes"""
@@ -373,7 +365,8 @@ def analyze_historical_crashes(df):
 def monte_carlo_black_swan(df, floor_model, n_sims=5000, horizon=730, 
                             black_swan_prob=0.05, black_swan_impact=-0.50, seed=42):
     """
-    Monte Carlo with Black Swan events (chunked vectorization for memory safety).
+    Monte Carlo with Black Swan events (vectorized).
+    Black swan = sudden extreme drop that can violate floors.
     """
     rng = np.random.RandomState(seed)
     log_ret = np.log(df['Close'] / df['Close'].shift(1)).dropna()
@@ -383,64 +376,59 @@ def monte_carlo_black_swan(df, floor_model, n_sims=5000, horizon=730,
     p0, d0 = df['Close'].iloc[-1], df['Days'].iloc[-1]
     a, b = floor_model['a'], floor_model['b']
     
+    # Pre-compute floors
     days_arr = np.arange(1, horizon + 1)
     floors = a * ((d0 + days_arr) ** b)
     
-    CHUNK = min(n_sims, 2000)
-    all_min_prices = []
-    all_min_days = []
-    all_bs = []
+    # Black swan setup (vectorized per simulation)
+    has_bs = rng.random(n_sims) < black_swan_prob                      # (n_sims,)
+    bs_days = np.where(has_bs, rng.randint(1, max(horizon // 2, 2), size=n_sims), -1)  # (n_sims,)
+    bs_shocks = black_swan_impact + rng.uniform(-0.10, 0.05, n_sims)   # (n_sims,)
     
-    remaining = n_sims
-    while remaining > 0:
-        chunk_size = min(CHUNK, remaining)
-        remaining -= chunk_size
+    # Pre-generate random numbers
+    regime_draws = rng.random((n_sims, horizon))
+    vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
+    normal_shocks = rng.normal(mu, 1.0, (n_sims, horizon)) * vols
+    bounce_draws = rng.random((n_sims, horizon))
+    bounce_levels = rng.uniform(0.0, 0.20, (n_sims, horizon))
+    
+    # Simulate
+    prices = np.full(n_sims, p0)
+    min_prices = np.full(n_sims, p0)
+    min_days = np.zeros(n_sims, dtype=int)
+    bs_occurred = np.zeros(n_sims, dtype=bool)
+    
+    for t in range(horizon):
+        d = t + 1  # 1-indexed day
         
-        # Black swan setup
-        has_bs = rng.random(chunk_size) < black_swan_prob
-        bs_days = np.where(has_bs, rng.randint(1, max(horizon // 2, 2), size=chunk_size), -1)
-        bs_shocks = black_swan_impact + rng.uniform(-0.10, 0.05, chunk_size)
+        # Black swan event on this day
+        bs_today = has_bs & (bs_days == d) & (~bs_occurred)
+        if bs_today.any():
+            prices[bs_today] = prices[bs_today] * (1 + bs_shocks[bs_today])
+            bs_occurred[bs_today] = True
         
-        regime_draws = rng.random((chunk_size, horizon))
-        vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-        normal_shocks = rng.normal(mu, 1.0, (chunk_size, horizon)) * vols
-        bounce_draws = rng.random((chunk_size, horizon))
-        bounce_levels = rng.uniform(0.0, 0.20, (chunk_size, horizon))
+        # Normal dynamics for non-BS sims on this step
+        normal_mask = ~bs_today
+        prices[normal_mask] = prices[normal_mask] * np.exp(normal_shocks[normal_mask, t])
         
-        prices = np.full(chunk_size, p0)
-        min_prices = np.full(chunk_size, p0)
-        min_days = np.zeros(chunk_size, dtype=int)
-        bs_occurred = np.zeros(chunk_size, dtype=bool)
+        # Floor bounce (skip during BS recovery: first 30 days after BS)
+        in_recovery = bs_occurred & (d < bs_days + 30)
+        can_bounce = ~in_recovery
         
-        for t in range(horizon):
-            d = t + 1
-            bs_today = has_bs & (bs_days == d) & (~bs_occurred)
-            if bs_today.any():
-                prices[bs_today] = prices[bs_today] * (1 + bs_shocks[bs_today])
-                bs_occurred[bs_today] = True
-            
-            normal_mask = ~bs_today
-            prices[normal_mask] = prices[normal_mask] * np.exp(normal_shocks[normal_mask, t])
-            
-            in_recovery = bs_occurred & (d < bs_days + 30)
-            can_bounce = ~in_recovery
-            floor_t = floors[t]
-            below_floor = can_bounce & (prices < floor_t * 0.85)
-            bounces = below_floor & (bounce_draws[:, t] < 0.70)
-            prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
-            
-            new_min = prices < min_prices
-            min_prices[new_min] = prices[new_min]
-            min_days[new_min] = d
+        floor_t = floors[t]
+        below_floor = can_bounce & (prices < floor_t * 0.85)
+        bounces = below_floor & (bounce_draws[:, t] < 0.70)
+        prices[bounces] = floor_t * (0.85 + bounce_levels[bounces, t])
         
-        all_min_prices.append(min_prices)
-        all_min_days.append(min_days)
-        all_bs.append(bs_occurred)
+        # Track minimums
+        new_min = prices < min_prices
+        min_prices[new_min] = prices[new_min]
+        min_days[new_min] = d
     
     return pd.DataFrame({
-        'min_price': np.concatenate(all_min_prices), 
-        'min_day': np.concatenate(all_min_days),
-        'black_swan': np.concatenate(all_bs)
+        'min_price': min_prices, 
+        'min_day': min_days,
+        'black_swan': bs_occurred
     })
 
 def calculate_evt_floor(df, confidence=0.99, horizon_days=30):
@@ -796,7 +784,7 @@ def main():
         y_max = max(df['Close'].max(), proj['Q10'].max()) * 2
         fig.update_yaxes(range=[np.log10(100), np.log10(y_max)])
         
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
     
     with table_col:
         st.subheader("📊 Floor Levels")
@@ -818,7 +806,7 @@ def main():
             lambda x: '🔴 BELOW' if x < 0 else ('🟡 NEAR' if x < 15 else '🟢 ABOVE')
         )
         
-        st.dataframe(floor_df, width="stretch", hide_index=True)
+        st.dataframe(floor_df, use_container_width=True, hide_index=True)
         
         st.markdown("---")
         
@@ -828,7 +816,7 @@ def main():
             'Price': [f"< ${q05*1.00:,.0f}", f"< ${q05*1.10:,.0f}", f"< ${q05*1.20:,.0f}", f"< ${q05*1.35:,.0f}"],
             'Description': ['At Q05 floor', '+10% from Q05', '+20% from Q05', '+35% from Q05']
         }
-        st.dataframe(pd.DataFrame(buy_levels), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(buy_levels), use_container_width=True, hide_index=True)
     
     st.markdown("---")
     
@@ -859,7 +847,7 @@ def main():
                 val = predict_pl(TODAY_DAYS + days, qm['a'], qm['b'])
                 proj_data[pname].append(f"${val:,.0f}")
         
-        st.dataframe(pd.DataFrame(proj_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(proj_data), use_container_width=True, hide_index=True)
     
     with mc_col:
         st.subheader("🎲 Monte Carlo Simulation")
@@ -886,7 +874,7 @@ def main():
                 f"~{mc[mc['min_price'] <= mc['min_price'].quantile(0.80)]['min_day'].median()/30:.0f}m",
             ]
         }
-        st.dataframe(pd.DataFrame(mc_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(mc_data), use_container_width=True, hide_index=True)
         
         st.info(f"""
         **Interpretation:**
@@ -924,7 +912,7 @@ def main():
     fig_mc.update_xaxes(title_text='Price ($)', row=1, col=1)
     fig_mc.update_xaxes(title_text='Months from now', row=1, col=2)
     
-    st.plotly_chart(fig_mc, width="stretch")
+    st.plotly_chart(fig_mc, use_container_width=True)
     
     st.markdown("---")
     
@@ -980,7 +968,7 @@ def main():
             display_crashes.columns = ['Peak Date', 'Peak Price', 'Bottom Date', 'Bottom Price', 
                                        'Drawdown', 'Crash Duration', 'Recovery Time']
             
-            st.dataframe(display_crashes.sort_values('Drawdown'), width="stretch", hide_index=True)
+            st.dataframe(display_crashes.sort_values('Drawdown'), use_container_width=True, hide_index=True)
             
             # Stats
             st.markdown("#### 📊 Statistiche Crash")
@@ -1059,7 +1047,7 @@ def main():
                         f"${mc_normal['min_price'].quantile(0.50):,.0f}",
                     ]
                 }
-                st.dataframe(pd.DataFrame(normal_data), width="stretch", hide_index=True)
+                st.dataframe(pd.DataFrame(normal_data), use_container_width=True, hide_index=True)
             else:
                 st.info("Tutte le simulazioni hanno avuto un black swan")
         
@@ -1075,7 +1063,7 @@ def main():
                         f"${mc_swan['min_price'].quantile(0.50):,.0f}",
                     ]
                 }
-                st.dataframe(pd.DataFrame(swan_data), width="stretch", hide_index=True)
+                st.dataframe(pd.DataFrame(swan_data), use_container_width=True, hide_index=True)
             else:
                 st.info("Nessuna simulazione con black swan")
         
@@ -1114,7 +1102,7 @@ def main():
             height=400
         )
         
-        st.plotly_chart(fig_bs, width="stretch")
+        st.plotly_chart(fig_bs, use_container_width=True)
         
         # Key insight
         if len(mc_swan) > 0:
@@ -1170,7 +1158,7 @@ def main():
                 'Esempio Storico': params['example']
             })
         
-        st.dataframe(pd.DataFrame(stress_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(stress_data), use_container_width=True, hide_index=True)
         
         # Floor reference
         st.markdown("---")
@@ -1263,7 +1251,7 @@ def main():
         max_price = CURRENT_PRICE * 1.2
         fig_stress.update_yaxes(range=[np.log10(min_price), np.log10(max_price)])
         
-        st.plotly_chart(fig_stress, width="stretch")
+        st.plotly_chart(fig_stress, use_container_width=True)
         
         # Interpretation
         st.markdown("#### 🎯 Interpretazione")
@@ -1333,7 +1321,7 @@ def main():
                 ],
                 'Method Type': ['Quantile Regression', 'Quantile Regression', 'Extreme Value Theory', 'Historical']
             }
-            st.dataframe(pd.DataFrame(floor_comparison), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(floor_comparison), use_container_width=True, hide_index=True)
             
             st.info("""
             **Interpretazione EVT:**
@@ -1392,7 +1380,7 @@ def main():
         # Run Monte Carlo to calculate probabilities
         @st.cache_data(ttl=3600)
         def calculate_entry_probabilities(_df_close, _df_days, current_price, today_days, floor_params, qr_params, n_sims=10000, horizon_days=730, seed=42):
-            """Calculate probability of reaching each floor level (chunked vectorization)"""
+            """Calculate probability of reaching each floor level (vectorized)"""
             rng = np.random.RandomState(seed)
             
             df_temp = pd.DataFrame({'Close': _df_close})
@@ -1401,37 +1389,27 @@ def main():
             sigma_n = log_ret[log_ret.abs() < 1.5*sigma].std()
             sigma_s = log_ret[log_ret.abs() >= 1.5*sigma].std()
             
-            CHUNK = min(n_sims, 2000)
-            all_min_prices = []
-            all_final_prices = []
+            # Pre-generate all random numbers
+            regime_draws = rng.random((n_sims, horizon_days))
+            vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
+            shocks = rng.normal(mu, 1.0, (n_sims, horizon_days)) * vols
             
-            remaining = n_sims
-            while remaining > 0:
-                chunk_size = min(CHUNK, remaining)
-                remaining -= chunk_size
-                
-                regime_draws = rng.random((chunk_size, horizon_days))
-                vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-                shocks = rng.normal(mu, 1.0, (chunk_size, horizon_days)) * vols
-                
-                prices = np.full(chunk_size, current_price)
-                min_prices = np.full(chunk_size, current_price)
-                
-                for t in range(horizon_days):
-                    prices = prices * np.exp(shocks[:, t])
-                    min_prices = np.minimum(min_prices, prices)
-                
-                all_min_prices.append(min_prices)
-                all_final_prices.append(prices)
+            # Simulate all paths (vectorized across sims, loop over time)
+            prices = np.full(n_sims, current_price)
+            min_prices = np.full(n_sims, current_price)
             
-            all_min = np.concatenate(all_min_prices)
-            all_final = np.concatenate(all_final_prices)
+            for t in range(horizon_days):
+                prices = prices * np.exp(shocks[:, t])
+                min_prices = np.minimum(min_prices, prices)
             
+            final_prices = prices
+            
+            # Calculate probabilities for each level
             prob_data = []
             for level, level_price in floor_params.items():
-                reached = np.sum(all_min <= level_price)
+                reached = np.sum(min_prices <= level_price)
                 prob = reached / n_sims
-                avg_final = float(np.mean(all_final))
+                avg_final = float(np.mean(final_prices))
                 
                 prob_data.append({
                     'level': level,
@@ -1493,7 +1471,7 @@ def main():
                 'Rischio': risk
             })
         
-        st.dataframe(pd.DataFrame(strategy_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(strategy_data), use_container_width=True, hide_index=True)
         
         st.markdown("---")
         st.markdown("### 🔀 Strategie Split (Diversificate)")
@@ -1537,7 +1515,7 @@ def main():
                 'Rend. Atteso': f"{expected_return:+.1f}%"
             })
         
-        st.dataframe(pd.DataFrame(split_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(split_data), use_container_width=True, hide_index=True)
     
     with strat_tab2:
         st.subheader("📈 Backtest Storico")
@@ -1670,7 +1648,7 @@ def main():
                 '% Positivi': f"{(returns > 0).mean()*100:.1f}%"
             })
         
-        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(stats_data), use_container_width=True, hide_index=True)
         
         st.markdown("#### 📈 Distribuzione Rendimenti")
         
@@ -1695,7 +1673,7 @@ def main():
             showlegend=False
         )
         
-        st.plotly_chart(fig_bt, width="stretch")
+        st.plotly_chart(fig_bt, use_container_width=True)
         
         st.markdown("#### 📈 Rendimento Medio nel Tempo")
         
@@ -1720,7 +1698,7 @@ def main():
             hovermode='x unified'
         )
         
-        st.plotly_chart(fig_equity, width="stretch")
+        st.plotly_chart(fig_equity, use_container_width=True)
     
     with strat_tab3:
         st.subheader("🏆 Raccomandazione Personalizzata")
@@ -1851,7 +1829,7 @@ def main():
                     'Importo': f"€{budget*0.25:,.0f}",
                     'BTC': f"{btc:.6f}"
                 })
-            st.dataframe(pd.DataFrame(ladder_data), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(ladder_data), use_container_width=True, hide_index=True)
         
         # Sensitivity analysis: how recommendation changes with different seeds
         st.markdown("---")
@@ -1866,32 +1844,25 @@ def main():
         mu_s, sigma_s_all = log_ret_sens.mean(), log_ret_sens.std()
         sigma_n_s = log_ret_sens[log_ret_sens.abs() < 1.5*sigma_s_all].std()
         sigma_s_s = log_ret_sens[log_ret_sens.abs() >= 1.5*sigma_s_all].std()
-        n_quick = 2000
+        n_quick = 3000
         h_days = int(horizon_months * 30.44)
         
         for s_seed in sensitivity_seeds:
             rng_sens = np.random.RandomState(s_seed)
             
-            # Chunked quick MC
-            CHUNK_S = min(n_quick, 1000)
-            all_min_s = []
-            rem_s = n_quick
-            while rem_s > 0:
-                cs = min(CHUNK_S, rem_s)
-                rem_s -= cs
-                regime_d = rng_sens.random((cs, h_days))
-                v = np.where(regime_d < 0.15, sigma_s_s, sigma_n_s)
-                sh = rng_sens.normal(mu_s, 1.0, (cs, h_days)) * v
-                p = np.full(cs, CURRENT_PRICE)
-                min_p = np.full(cs, CURRENT_PRICE)
-                for t in range(h_days):
-                    p = p * np.exp(sh[:, t])
-                    min_p = np.minimum(min_p, p)
-                all_min_s.append(min_p)
+            # Vectorized quick MC
+            regime_d = rng_sens.random((n_quick, h_days))
+            v = np.where(regime_d < 0.15, sigma_s_s, sigma_n_s)
+            sh = rng_sens.normal(mu_s, 1.0, (n_quick, h_days)) * v
             
-            all_min_concat = np.concatenate(all_min_s)
-            reached_q10 = np.sum(all_min_concat <= entry_levels['Q10 Floor'])
-            reached_q05 = np.sum(all_min_concat <= entry_levels['Q05 Floor'])
+            p = np.full(n_quick, CURRENT_PRICE)
+            min_p = np.full(n_quick, CURRENT_PRICE)
+            for t in range(h_days):
+                p = p * np.exp(sh[:, t])
+                min_p = np.minimum(min_p, p)
+            
+            reached_q10 = np.sum(min_p <= entry_levels['Q10 Floor'])
+            reached_q05 = np.sum(min_p <= entry_levels['Q05 Floor'])
             
             sens_results.append({
                 'Seed': s_seed,
@@ -1899,7 +1870,7 @@ def main():
                 'P(Q05)': f"{reached_q05/n_quick*100:.1f}%"
             })
         
-        st.dataframe(pd.DataFrame(sens_results), width="stretch", hide_index=True)
+        st.dataframe(pd.DataFrame(sens_results), use_container_width=True, hide_index=True)
         
         st.markdown("---")
         st.error("""
@@ -1925,7 +1896,7 @@ def main():
                 'SE(b)': [f"{qr_models[q]['se_slope']:.4f}" for q in [0.01, 0.02, 0.05, 0.10, 0.15, 0.20]],
                 'p-value': [f"{qr_models[q]['pval_slope']:.2e}" for q in [0.01, 0.02, 0.05, 0.10, 0.15, 0.20]]
             }
-            st.dataframe(pd.DataFrame(params_data), width="stretch", hide_index=True)
+            st.dataframe(pd.DataFrame(params_data), use_container_width=True, hide_index=True)
             st.caption("SE = Standard Error dello slope. p-value < 0.05 indica significatività statistica.")
         
         with col2:
