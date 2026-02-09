@@ -619,52 +619,56 @@ def main():
     st.markdown("---")
     
     # Disclaimer
-    st.subheader("⚠️ DISCLAIMER / AVVERTENZE")
-    
-    disc_col1, disc_col2 = st.columns(2)
-    
-    with disc_col1:
-        st.markdown("#### 🇮🇹 Italiano")
-        st.warning("""
-        **Questo strumento è fornito esclusivamente a scopo informativo e didattico.**
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 10px; padding: 1.5rem; margin: 1rem 0; border-left: 4px solid #dc3545;">
+        <h4 style="color: #dc3545; margin-top: 0;">⚠️ DISCLAIMER / AVVERTENZE</h4>
         
-        Le informazioni presentate **NON costituiscono consulenza finanziaria, di investimento, fiscale o legale**. 
-        I modelli matematici utilizzati (Power Law, Quantile Regression, NLB) sono basati su dati storici e 
-        **non garantiscono risultati futuri**.
+        <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 300px;">
+                <h5 style="color: #F7931A;">🇮🇹 Italiano</h5>
+                <p style="font-size: 0.85rem; color: #ccc; text-align: justify;">
+                    <strong>Questo strumento è fornito esclusivamente a scopo informativo e didattico.</strong><br><br>
+                    Le informazioni presentate <strong>NON costituiscono consulenza finanziaria, di investimento, fiscale o legale</strong>. 
+                    I modelli matematici utilizzati (Power Law, Quantile Regression, NLB) sono basati su dati storici e 
+                    <strong>non garantiscono risultati futuri</strong>.<br><br>
+                    Il mercato delle criptovalute è altamente volatile e speculativo. 
+                    <strong>Potresti perdere tutto il capitale investito.</strong><br><br>
+                    Prima di prendere qualsiasi decisione di investimento, consulta un consulente finanziario qualificato e autorizzato. 
+                    L'autore di questo strumento <strong>non si assume alcuna responsabilità</strong> per eventuali perdite derivanti dall'uso delle informazioni qui contenute.
+                </p>
+            </div>
+            
+            <div style="flex: 1; min-width: 300px;">
+                <h5 style="color: #F7931A;">🇬🇧 English</h5>
+                <p style="font-size: 0.85rem; color: #ccc; text-align: justify;">
+                    <strong>This tool is provided for informational and educational purposes only.</strong><br><br>
+                    The information presented <strong>does NOT constitute financial, investment, tax, or legal advice</strong>. 
+                    The mathematical models used (Power Law, Quantile Regression, NLB) are based on historical data and 
+                    <strong>do not guarantee future results</strong>.<br><br>
+                    The cryptocurrency market is highly volatile and speculative. 
+                    <strong>You may lose all of your invested capital.</strong><br><br>
+                    Before making any investment decision, consult a qualified and authorized financial advisor. 
+                    The author of this tool <strong>assumes no responsibility</strong> for any losses arising from the use of the information contained herein.
+                </p>
+            </div>
+        </div>
         
-        Il mercato delle criptovalute è altamente volatile e speculativo. 
-        **Potresti perdere tutto il capitale investito.**
+        <hr style="border-color: #333; margin: 1rem 0;">
         
-        Prima di prendere qualsiasi decisione di investimento, consulta un consulente finanziario qualificato e autorizzato. 
-        L'autore di questo strumento **non si assume alcuna responsabilità** per eventuali perdite derivanti dall'uso delle informazioni qui contenute.
-        """)
+        <p style="font-size: 0.75rem; color: #888; text-align: center; margin-bottom: 0;">
+            📊 Past performance is not indicative of future results. | I rendimenti passati non sono indicativi di risultati futuri.<br>
+            🔬 This is a research tool, not a trading system. | Questo è uno strumento di ricerca, non un sistema di trading.<br>
+            💡 Always do your own research (DYOR). | Fai sempre le tue ricerche personali.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with disc_col2:
-        st.markdown("#### 🇬🇧 English")
-        st.warning("""
-        **This tool is provided for informational and educational purposes only.**
-        
-        The information presented **does NOT constitute financial, investment, tax, or legal advice**. 
-        The mathematical models used (Power Law, Quantile Regression, NLB) are based on historical data and 
-        **do not guarantee future results**.
-        
-        The cryptocurrency market is highly volatile and speculative. 
-        **You may lose all of your invested capital.**
-        
-        Before making any investment decision, consult a qualified and authorized financial advisor. 
-        The author of this tool **assumes no responsibility** for any losses arising from the use of the information contained herein.
-        """)
-    
-    st.info("""
-    📊 **Past performance is not indicative of future results.** | I rendimenti passati non sono indicativi di risultati futuri.
-    
-    🔬 **This is a research tool, not a trading system.** | Questo è uno strumento di ricerca, non un sistema di trading.
-    
-    💡 **Always do your own research (DYOR).** | Fai sempre le tue ricerche personali.
-    """)
-    
-    st.markdown("---")
-    st.caption(f"Data: CryptoCompare | Models: Power Law, Quantile Regression, NLB | Last update: {TODAY.strftime('%Y-%m-%d %H:%M')}")
+    st.markdown("""
+    <p style="text-align: center; color: #666; font-size: 0.8rem; margin-top: 1rem;">
+        Data: CryptoCompare | Models: Power Law, Quantile Regression, NLB | 
+        Last update: """ + TODAY.strftime('%Y-%m-%d %H:%M') + """
+    </p>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
