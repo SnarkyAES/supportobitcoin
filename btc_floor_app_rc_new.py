@@ -535,7 +535,7 @@ def main():
         st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/1200px-Bitcoin.svg.png", width=80)
         st.title("⚙️ Settings")
         
-        start_year = st.selectbox("Start Year", [2010, 2011, 2012, 2013, 2014, 2015], index=3)
+        start_year = st.selectbox("Start Year", [2010, 2011, 2012, 2013, 2014, 2015], index=0)
         mc_sims = st.slider("Monte Carlo Simulations", 1000, 50000, 5000, 1000,
                             help="5k per analisi rapida, 20k+ per percentili estremi accurati. >20k può essere lento.")
         projection_years = st.slider("Projection (years)", 1, 5, 2)
