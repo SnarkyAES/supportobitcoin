@@ -2123,18 +2123,19 @@ def main():
                 pdf.ln()
             pdf.ln(2)
         
-        def add_chart(fig, width=180, height=90):
-            """Render plotly figure as image and add to PDF"""
+        def add_chart_mpl(fig_mpl, width=180):
+            """Render matplotlib figure as image and add to PDF"""
             try:
-                img_bytes = fig.to_image(format="png", width=int(width*4), height=int(height*4), scale=2)
                 tmp = tempfile.NamedTemporaryFile(suffix='.png', delete=False)
-                tmp.write(img_bytes)
+                fig_mpl.savefig(tmp.name, format='png', dpi=150, bbox_inches='tight',
+                                facecolor='white', edgecolor='none')
+                plt.close(fig_mpl)
                 tmp.close()
                 pdf.image(tmp.name, x=15, w=width)
                 os.unlink(tmp.name)
                 pdf.ln(3)
-            except Exception:
-                text("[Chart could not be rendered - kaleido may not be available]")
+            except Exception as chart_err:
+                text(f"[Chart render error: {chart_err}]")
         
         # ================================================================
         # PAGE 1: DISCLAIMER + SIGNAL + MARKET SNAPSHOT
@@ -2213,16 +2214,28 @@ def main():
         pdf.add_page()
         section("3. PRICE & FLOOR CHART", 30, 100, 180)
         
-        # Full chart
-        fig_full = go.Figure()
-        fig_full.add_trace(go.Scatter(x=df['Date'], y=df['Close'], name='BTC Price', line=dict(color='#F7931A', width=2)))
-        fig_full.add_trace(go.Scatter(x=df['Date'], y=df['NLB'], name='NLB', line=dict(color='#dc3545', width=1, dash='dot')))
+        # Full chart (matplotlib)
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        import matplotlib.ticker as mticker
+        
+        fig_full, ax_full = plt.subplots(figsize=(10, 4.5))
+        ax_full.semilogy(df['Date'], df['Close'], color='#F7931A', linewidth=1.5, label='BTC Price')
+        ax_full.semilogy(df['Date'], df['NLB'], color='#dc3545', linewidth=0.8, linestyle=':', label='NLB')
         for qval, qname, qcol in [(0.01, 'Q01', '#8B0000'), (0.05, 'Q05', '#dc3545'), (0.10, 'Q10', '#28a745'), (0.20, 'Q20', '#90EE90')]:
             floor_vals = predict_pl(df['Days'], qr_models[qval]['a'], qr_models[qval]['b'])
-            fig_full.add_trace(go.Scatter(x=df['Date'], y=floor_vals, name=qname, line=dict(color=qcol, width=1.5)))
-        fig_full.add_trace(go.Scatter(x=df['Date'], y=predict_pl(df['Days'], pl_standard['a'], pl_standard['b']), name='PL Fair', line=dict(color='#6c757d', width=1, dash='dash')))
-        fig_full.update_layout(title='BTC Price vs Floor Models (Full History)', yaxis_type='log', yaxis_title='Price (USD, log)', template='plotly_white', height=350, margin=dict(l=60, r=20, t=40, b=40), legend=dict(orientation='h', y=-0.15))
-        add_chart(fig_full, 180, 85)
+            ax_full.semilogy(df['Date'], floor_vals, color=qcol, linewidth=1, label=qname)
+        ax_full.semilogy(df['Date'], predict_pl(df['Days'], pl_standard['a'], pl_standard['b']), color='#6c757d', linewidth=0.8, linestyle='--', label='PL Fair')
+        ax_full.set_title('BTC Price vs Floor Models (Full History)', fontsize=11, fontweight='bold')
+        ax_full.set_ylabel('Price (USD, log)')
+        ax_full.legend(loc='upper left', fontsize=7, ncol=4)
+        ax_full.grid(True, alpha=0.3)
+        ax_full.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
+        ax_full.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        fig_full.tight_layout()
+        add_chart_mpl(fig_full)
         
         # Zoom: last 12 months + next 6 months
         text("Detail: Last 12 Months + 6-Month Projection", size=9, bold=True)
@@ -2234,17 +2247,23 @@ def main():
             'Days': [(TODAY + pd.Timedelta(days=d+1) - GENESIS_DATE).days for d in range(180)]
         })
         
-        fig_zoom = go.Figure()
-        fig_zoom.add_trace(go.Scatter(x=df_zoom['Date'], y=df_zoom['Close'], name='BTC Price', line=dict(color='#F7931A', width=2)))
+        # Zoom chart (matplotlib) - last 12 months + 6 month projection
+        fig_zoom, ax_zoom = plt.subplots(figsize=(10, 3.8))
+        ax_zoom.plot(df_zoom['Date'], df_zoom['Close'], color='#F7931A', linewidth=1.5, label='BTC Price')
         for qval, qname, qcol in [(0.01, 'Q01', '#8B0000'), (0.05, 'Q05', '#dc3545'), (0.10, 'Q10', '#28a745')]:
-            fig_zoom.add_trace(go.Scatter(x=df_zoom['Date'], y=predict_pl(df_zoom['Days'], qr_models[qval]['a'], qr_models[qval]['b']), name=qname, line=dict(color=qcol, width=1.5)))
-            fig_zoom.add_trace(go.Scatter(x=proj_zoom['Date'], y=predict_pl(proj_zoom['Days'], qr_models[qval]['a'], qr_models[qval]['b']), name=f'{qname} proj', line=dict(color=qcol, width=1, dash='dot'), showlegend=False))
-        fig_zoom.add_trace(go.Scatter(x=df_zoom['Date'], y=predict_pl(df_zoom['Days'], pl_standard['a'], pl_standard['b']), name='PL Fair', line=dict(color='#6c757d', width=1, dash='dash')))
-        fig_zoom.add_trace(go.Scatter(x=proj_zoom['Date'], y=predict_pl(proj_zoom['Days'], pl_standard['a'], pl_standard['b']), name='PL Fair proj', line=dict(color='#6c757d', width=1, dash='dot'), showlegend=False))
-        fig_zoom.add_shape(type="line", x0=TODAY, x1=TODAY, y0=0, y1=1, yref="paper", line=dict(color="gray", dash="solid"))
-        fig_zoom.add_annotation(x=TODAY, y=1, yref="paper", text="Today", showarrow=False, yshift=10, font=dict(size=10, color="gray"))
-        fig_zoom.update_layout(title='12-Month Detail + 6-Month Projection', yaxis_title='Price (USD)', template='plotly_white', height=300, margin=dict(l=60, r=20, t=40, b=40), legend=dict(orientation='h', y=-0.2))
-        add_chart(fig_zoom, 180, 75)
+            ax_zoom.plot(df_zoom['Date'], predict_pl(df_zoom['Days'], qr_models[qval]['a'], qr_models[qval]['b']), color=qcol, linewidth=1, label=qname)
+            ax_zoom.plot(proj_zoom['Date'], predict_pl(proj_zoom['Days'], qr_models[qval]['a'], qr_models[qval]['b']), color=qcol, linewidth=0.8, linestyle=':', alpha=0.7)
+        ax_zoom.plot(df_zoom['Date'], predict_pl(df_zoom['Days'], pl_standard['a'], pl_standard['b']), color='#6c757d', linewidth=0.8, linestyle='--', label='PL Fair')
+        ax_zoom.plot(proj_zoom['Date'], predict_pl(proj_zoom['Days'], pl_standard['a'], pl_standard['b']), color='#6c757d', linewidth=0.8, linestyle=':', alpha=0.7)
+        ax_zoom.axvline(x=TODAY, color='gray', linewidth=1, label='Today')
+        ax_zoom.set_title('12-Month Detail + 6-Month Projection', fontsize=11, fontweight='bold')
+        ax_zoom.set_ylabel('Price (USD)')
+        ax_zoom.legend(loc='upper left', fontsize=7, ncol=4)
+        ax_zoom.grid(True, alpha=0.3)
+        ax_zoom.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+        ax_zoom.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        fig_zoom.tight_layout()
+        add_chart_mpl(fig_zoom)
         
         # ================================================================
         # PAGE 3: MONTE CARLO + FLOOR MODELS
@@ -2252,16 +2271,24 @@ def main():
         pdf.add_page()
         section("4. MONTE CARLO SIMULATION", 100, 50, 150)
         
-        fig_mc_pdf = go.Figure()
-        fig_mc_pdf.add_trace(go.Histogram(x=mc['min_price'], nbinsx=60, name='Min Price Distribution', marker_color='rgba(247,147,26,0.7)'))
-        fig_mc_pdf.add_vline(x=mc['min_price'].quantile(0.05), line_dash='dash', line_color='red', annotation_text='P5')
-        fig_mc_pdf.add_vline(x=mc['min_price'].quantile(0.50), line_dash='dash', line_color='blue', annotation_text='P50')
-        fig_mc_pdf.add_vline(x=CURRENT_PRICE, line_dash='solid', line_color='green', annotation_text='Current')
+        fig_mc_pdf, ax_mc = plt.subplots(figsize=(10, 3.8))
+        ax_mc.hist(mc['min_price'], bins=60, color='#F7931A', alpha=0.7, edgecolor='white', linewidth=0.3, label='Min Price Dist.')
+        p5_val = mc['min_price'].quantile(0.05)
+        p50_val = mc['min_price'].quantile(0.50)
+        ax_mc.axvline(x=p5_val, color='red', linestyle='--', linewidth=1, label=f'P5: ${p5_val:,.0f}')
+        ax_mc.axvline(x=p50_val, color='blue', linestyle='--', linewidth=1, label=f'P50: ${p50_val:,.0f}')
+        ax_mc.axvline(x=CURRENT_PRICE, color='green', linestyle='-', linewidth=1.2, label=f'Current: ${CURRENT_PRICE:,.0f}')
         for qval in [0.01, 0.05, 0.10]:
             fp = predict_pl(TODAY_DAYS, qr_models[qval]['a'], qr_models[qval]['b'])
-            fig_mc_pdf.add_vline(x=fp, line_dash='dot', line_color='gray', annotation_text=f'Q{int(qval*100):02d}')
-        fig_mc_pdf.update_layout(title=f'Monte Carlo Minimum Price Distribution ({mc_sims:,} sims)', xaxis_title='Price ($)', yaxis_title='Frequency', template='plotly_white', height=300, margin=dict(l=60, r=20, t=40, b=40))
-        add_chart(fig_mc_pdf, 180, 75)
+            ax_mc.axvline(x=fp, color='gray', linestyle=':', linewidth=0.8, label=f'Q{int(qval*100):02d}: ${fp:,.0f}')
+        ax_mc.set_title(f'Monte Carlo Minimum Price Distribution ({mc_sims:,} sims)', fontsize=11, fontweight='bold')
+        ax_mc.set_xlabel('Price ($)')
+        ax_mc.set_ylabel('Frequency')
+        ax_mc.legend(loc='upper right', fontsize=6.5, ncol=2)
+        ax_mc.grid(True, alpha=0.3)
+        ax_mc.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'${x:,.0f}'))
+        fig_mc_pdf.tight_layout()
+        add_chart_mpl(fig_mc_pdf)
         
         # Floor models table
         section("5. FLOOR MODELS (Quantile Regression on LOG(LOW) prices)")
