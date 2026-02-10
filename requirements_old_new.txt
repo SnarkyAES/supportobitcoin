@@ -6,4 +6,3 @@ plotly
 statsmodels
 scipy
 fpdf2
-kaleido

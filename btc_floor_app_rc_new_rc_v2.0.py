@@ -17,6 +17,8 @@ import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from datetime import datetime
 import time
+from io import BytesIO
+import io
 
 # ============================================================================
 # PAGE CONFIG
@@ -691,15 +693,23 @@ def main():
         cycle_phase = "🟠 Fine Ciclo / Pre-Halving"
         cycle_note = "Storicamente fase di consolidamento/correzione"
     
-    cycle_col1, cycle_col2, cycle_col3, cycle_col4 = st.columns(4)
+    cycle_col1, cycle_col2, cycle_col3 = st.columns(3)
     with cycle_col1:
         st.metric("⛏️ Ultimo Halving", last_halving.strftime('%Y-%m-%d'), f"{days_since_halving} giorni fa")
     with cycle_col2:
         st.metric("⏳ Prossimo Halving (est.)", NEXT_HALVING_EST.strftime('%Y-%m'), f"~{days_to_next_halving} giorni")
     with cycle_col3:
-        st.metric("📍 Progresso Ciclo", f"{cycle_progress:.0f}%", cycle_phase)
-    with cycle_col4:
-        st.metric("📊 Fase", cycle_note)
+        st.metric("📍 Progresso Ciclo", f"{cycle_progress:.0f}%")
+    
+    # Phase shown as colored info box (not truncated in st.metric delta)
+    if cycle_progress < 25:
+        st.success(f"🟢 **Fase: Accumulo Post-Halving** — Storicamente fase favorevole per accumulazione ({cycle_progress:.0f}% del ciclo)")
+    elif cycle_progress < 50:
+        st.success(f"🟢 **Fase: Bull Run** — Storicamente fase di crescita rapida ({cycle_progress:.0f}% del ciclo)")
+    elif cycle_progress < 75:
+        st.warning(f"🟡 **Fase: Maturità del Ciclo** — Possibili top, cautela crescente ({cycle_progress:.0f}% del ciclo)")
+    else:
+        st.warning(f"🟠 **Fase: Fine Ciclo / Pre-Halving** — Storicamente fase di consolidamento o correzione ({cycle_progress:.0f}% del ciclo)")
     
     st.markdown("---")
     
@@ -1352,38 +1362,38 @@ def main():
     # ============================================================================
     st.header("🎯 Entry Strategy Calculator")
     st.markdown("""
-    Confronta diverse strategie di ingresso: **comprare ora** vs **aspettare un dip**.
+    Confronta diverse strategie di ingresso: **comprare ora** vs **aspettare un dip** vs **tenere riserva per Black Swan**.
     Analisi basata su probabilità Monte Carlo e backtest storico.
     """)
     
     # Input parameters
-    strat_col1, strat_col2, strat_col3 = st.columns(3)
-    with strat_col1:
-        budget = st.number_input("💰 Budget (€)", min_value=100, max_value=10000000, value=10000, step=1000)
-    with strat_col2:
+    strat_param_col1, strat_param_col2, strat_param_col3 = st.columns(3)
+    with strat_param_col1:
+        budget = st.number_input("💰 Budget Totale (€)", min_value=100, max_value=10000000, value=10000, step=1000)
+    with strat_param_col2:
         horizon_months = st.selectbox("📅 Orizzonte", [12, 24, 36], index=1, format_func=lambda x: f"{x} mesi ({x//12} anni)")
-    with strat_col3:
+    with strat_param_col3:
         target_price_2y = st.number_input("🎯 Target Price (stima)", min_value=50000, max_value=1000000, value=int(pl_fair * 1.5), step=10000)
     
-    # Black Swan toggle for entry strategy
-    es_bs_col1, es_bs_col2, es_bs_col3 = st.columns([1, 1, 1])
-    with es_bs_col1:
-        es_include_bs = st.toggle("🦢 Includi Black Swan nella simulazione", value=False,
-                                  help="Se attivo, le simulazioni MC includono eventi Black Swan che possono creare opportunità di acquisto a prezzi molto bassi.")
-    with es_bs_col2:
-        if es_include_bs:
-            es_bs_prob = st.slider("Prob. BS (%)", 1, 20, 5, key="es_bs_prob") / 100
-        else:
-            es_bs_prob = 0.0
-    with es_bs_col3:
-        if es_include_bs:
-            es_bs_impact = st.slider("Impatto BS (%)", -80, -30, -50, key="es_bs_impact") / 100
-            es_bs_buy_pct = st.slider("% Budget da investire durante BS", 10, 100, 50, 10, 
-                                       key="es_bs_buy_pct",
-                                       help="Quota del budget non ancora investito da usare se il prezzo scende sotto un floor durante un Black Swan.") / 100
-        else:
-            es_bs_impact = -0.50
-            es_bs_buy_pct = 0.50
+    # Reserve & Black Swan parameters
+    st.markdown("#### 🦢 Parametri Riserva & Black Swan")
+    st.caption("La **Riserva Opportunistica** è una quota del budget tenuta in cash per comprare durante dip estremi (Black Swan o flash crash). Aumenta il potenziale rendimento ma riduce l'esposizione immediata.")
+    
+    reserve_col1, reserve_col2, reserve_col3 = st.columns(3)
+    with reserve_col1:
+        reserve_pct = st.slider("💵 Riserva Opportunistica (%)", 0, 50, 20, 5,
+                                help="% del budget tenuto in cash come riserva per cogliere occasioni. 0% = tutto investito subito.") / 100
+    with reserve_col2:
+        es_bs_prob = st.slider("🎲 Prob. Black Swan (%)", 1, 20, 5, key="es_bs_prob2",
+                               help="Probabilità di un evento BS nell'orizzonte. BTC storico: ~35-40% su 2 anni.") / 100
+    with reserve_col3:
+        es_bs_impact = st.slider("💥 Impatto BS (%)", -80, -30, -50, key="es_bs_impact2") / 100
+    
+    budget_invest = budget * (1 - reserve_pct)
+    budget_reserve = budget * reserve_pct
+    
+    if reserve_pct > 0:
+        st.info(f"💰 **Budget investito subito**: €{budget_invest:,.0f} ({(1-reserve_pct)*100:.0f}%) | 🦢 **Riserva BS**: €{budget_reserve:,.0f} ({reserve_pct*100:.0f}%)")
     
     # Define entry levels
     entry_levels = {
@@ -1405,24 +1415,17 @@ def main():
     with strat_tab1:
         st.subheader("📊 Probabilità di Raggiungimento & Rendimento Atteso")
         
-        if es_include_bs:
-            st.markdown(f"""
-            **Simulazione Monte Carlo + 🦢 Black Swan**: Probabilità di raggiungere ogni livello nei prossimi **{horizon_months} mesi**.  
-            BS: {es_bs_prob*100:.0f}% prob., {es_bs_impact*100:.0f}% impatto. Durante BS, investi {es_bs_buy_pct*100:.0f}% del budget residuo se il prezzo tocca un floor.
-            """)
-        else:
-            st.markdown(f"""
-            **Simulazione Monte Carlo**: Qual è la probabilità che BTC tocchi ogni livello nei prossimi **{horizon_months} mesi**?
-            """)
+        st.markdown(f"""
+        **Monte Carlo** ({horizon_months} mesi) — Include eventi Black Swan ({es_bs_prob*100:.0f}% prob., {es_bs_impact*100:.0f}% impatto).  
+        Budget investito: €{budget_invest:,.0f} | Riserva BS: €{budget_reserve:,.0f}
+        """)
         
-        # MC with optional Black Swan
         @st.cache_data(ttl=3600)
-        def calculate_entry_probabilities_bs(_df_close, current_price, floor_params_tuple, 
-                                              n_sims=10000, horizon_days=730, seed=42,
-                                              include_bs=False, bs_prob=0.05, bs_impact=-0.50):
-            """Calculate probability of reaching each floor level with optional Black Swan (chunked)"""
+        def calc_entry_probs_v2(_df_close, current_price, floor_params_tuple,
+                                n_sims=10000, horizon_days=730, seed=42,
+                                bs_prob=0.05, bs_impact=-0.50):
+            """MC with Black Swan: tracks probability + whether reached during BS window"""
             rng = np.random.RandomState(seed)
-            
             df_temp = pd.DataFrame({'Close': _df_close})
             log_ret = np.log(df_temp['Close'] / df_temp['Close'].shift(1)).dropna()
             mu, sigma = log_ret.mean(), log_ret.std()
@@ -1431,209 +1434,171 @@ def main():
             
             floor_params = dict(floor_params_tuple)
             floor_prices = np.array(list(floor_params.values()))
-            floor_names = list(floor_params.keys())
-            n_levels = len(floor_names)
+            n_levels = len(floor_prices)
             
             CHUNK = min(n_sims, 2000)
             total_reached = np.zeros(n_levels, dtype=int)
-            total_reached_in_bs = np.zeros(n_levels, dtype=int)
+            total_reached_bs = np.zeros(n_levels, dtype=int)
             all_final = []
             
             remaining = n_sims
             while remaining > 0:
-                chunk_size = min(CHUNK, remaining)
-                remaining -= chunk_size
+                cs = min(CHUNK, remaining)
+                remaining -= cs
                 
-                # Generate shocks
-                regime_draws = rng.random((chunk_size, horizon_days))
+                regime_draws = rng.random((cs, horizon_days))
                 vols = np.where(regime_draws < 0.15, sigma_s, sigma_n)
-                shocks = rng.normal(mu, 1.0, (chunk_size, horizon_days)) * vols
+                shocks = rng.normal(mu, 1.0, (cs, horizon_days)) * vols
                 
-                # Black Swan setup
-                if include_bs:
-                    has_bs = rng.random(chunk_size) < bs_prob
-                    bs_days = np.where(has_bs, rng.randint(1, max(horizon_days // 2, 2), size=chunk_size), -1)
-                    bs_shocks_arr = bs_impact + rng.uniform(-0.10, 0.05, chunk_size)
-                else:
-                    has_bs = np.zeros(chunk_size, dtype=bool)
-                    bs_days = np.full(chunk_size, -1)
-                    bs_shocks_arr = np.zeros(chunk_size)
+                has_bs = rng.random(cs) < bs_prob
+                bs_days = np.where(has_bs, rng.randint(1, max(horizon_days // 2, 2), size=cs), -1)
+                bs_shocks_arr = bs_impact + rng.uniform(-0.10, 0.05, cs)
                 
-                prices = np.full(chunk_size, current_price)
-                min_prices = np.full(chunk_size, current_price)
-                bs_occurred = np.zeros(chunk_size, dtype=bool)
-                # Track if min was reached during BS recovery window (30 days after BS)
-                min_during_bs = np.zeros(chunk_size, dtype=bool)
+                prices = np.full(cs, current_price)
+                min_prices = np.full(cs, current_price)
+                bs_occurred = np.zeros(cs, dtype=bool)
+                min_in_bs = np.zeros(cs, dtype=bool)
                 
                 for t in range(horizon_days):
                     d = t + 1
-                    # Black swan event
                     bs_today = has_bs & (bs_days == d) & (~bs_occurred)
                     if bs_today.any():
-                        prices[bs_today] = prices[bs_today] * (1 + bs_shocks_arr[bs_today])
+                        prices[bs_today] *= (1 + bs_shocks_arr[bs_today])
                         bs_occurred[bs_today] = True
+                    normal = ~bs_today
+                    prices[normal] *= np.exp(shocks[normal, t])
                     
-                    normal_mask = ~bs_today
-                    prices[normal_mask] = prices[normal_mask] * np.exp(shocks[normal_mask, t])
-                    
-                    # Track new minimums and whether they occurred during BS
-                    new_min_mask = prices < min_prices
-                    in_bs_window = bs_occurred & (d <= bs_days + 60)  # 60-day BS window
-                    min_during_bs[new_min_mask & in_bs_window] = True
-                    min_during_bs[new_min_mask & ~in_bs_window] = False
+                    new_min = prices < min_prices
+                    in_bs_win = bs_occurred & (d <= bs_days + 60)
+                    min_in_bs[new_min & in_bs_win] = True
+                    min_in_bs[new_min & ~in_bs_win] = False
                     min_prices = np.minimum(min_prices, prices)
                 
                 all_final.append(prices.copy())
-                
-                # Count reached per level
                 for j in range(n_levels):
-                    reached_mask = min_prices <= floor_prices[j]
-                    total_reached[j] += np.sum(reached_mask)
-                    total_reached_in_bs[j] += np.sum(reached_mask & min_during_bs)
+                    rm = min_prices <= floor_prices[j]
+                    total_reached[j] += rm.sum()
+                    total_reached_bs[j] += (rm & min_in_bs).sum()
             
-            all_final_arr = np.concatenate(all_final)
-            avg_final = float(np.mean(all_final_arr))
-            
-            prob_data = []
-            for j, (level, level_price) in enumerate(floor_params.items()):
-                prob = total_reached[j] / n_sims
-                prob_via_bs = total_reached_in_bs[j] / n_sims
-                prob_data.append({
-                    'level': level,
-                    'price': level_price,
-                    'probability': prob,
-                    'prob_via_bs': prob_via_bs,
+            avg_final = float(np.mean(np.concatenate(all_final)))
+            results = []
+            for j, (level, price) in enumerate(floor_params.items()):
+                results.append({
+                    'level': level, 'price': price,
+                    'probability': total_reached[j] / n_sims,
+                    'prob_via_bs': total_reached_bs[j] / n_sims,
                     'avg_final_price': avg_final
                 })
-            
-            return pd.DataFrame(prob_data)
+            return pd.DataFrame(results)
         
         with st.spinner("Calcolando probabilità..."):
-            prob_df = calculate_entry_probabilities_bs(
-                df['Close'].values, CURRENT_PRICE,
-                tuple(entry_levels.items()),
+            prob_df = calc_entry_probs_v2(
+                df['Close'].values, CURRENT_PRICE, tuple(entry_levels.items()),
                 n_sims=10000, horizon_days=int(horizon_months * 30.44), seed=mc_seed,
-                include_bs=es_include_bs, bs_prob=es_bs_prob, bs_impact=es_bs_impact
+                bs_prob=es_bs_prob, bs_impact=es_bs_impact
             )
         
-        # Calculate expected value for each strategy - use numeric values for sorting
+        # Build strategy table with numeric values (sortable)
         strategy_rows = []
-        
         for _, row in prob_df.iterrows():
             level = row['level']
             entry_price = row['price']
             prob_reach = row['probability']
-            prob_via_bs = row['prob_via_bs']
+            prob_bs = row['prob_via_bs']
             
             if level == 'Prezzo Attuale':
-                btc_bought = budget / entry_price
-                expected_final_value = btc_bought * target_price_2y
-                expected_return = (expected_final_value / budget - 1) * 100
-                prob_execute = 1.0
+                btc_bought = budget_invest / entry_price
+                ev = btc_bought * target_price_2y + budget_reserve  # reserve stays cash
+                expected_return = (ev / budget - 1) * 100
             else:
-                prob_execute = prob_reach
                 if prob_reach > 0:
-                    btc_bought = budget / entry_price
-                    # If BS enabled, some entries happen during BS at even lower prices (bonus)
-                    if es_include_bs and prob_via_bs > 0:
-                        # Portion entered during BS gets extra discount
-                        prob_normal = prob_reach - prob_via_bs
-                        ev_normal = prob_normal * (btc_bought * target_price_2y)
-                        # During BS, you enter with es_bs_buy_pct of budget at floor price
-                        btc_bs = (budget * es_bs_buy_pct) / entry_price
-                        ev_bs = prob_via_bs * (btc_bs * target_price_2y)
-                        cash_remaining = (1 - prob_normal) * budget - prob_via_bs * (budget * es_bs_buy_pct)
-                        cash_remaining = max(cash_remaining, 0)
-                        expected_final_value = ev_normal + ev_bs + cash_remaining
+                    btc_invest = budget_invest / entry_price
+                    # Reserve deployed during BS if floor reached during BS
+                    if prob_bs > 0 and budget_reserve > 0:
+                        btc_reserve = budget_reserve / entry_price
+                        ev_invest = prob_reach * (btc_invest * target_price_2y)
+                        ev_reserve = prob_bs * (btc_reserve * target_price_2y)
+                        ev_cash = (1 - prob_reach) * budget_invest + (1 - prob_bs) * budget_reserve
+                        ev = ev_invest + ev_reserve + ev_cash
                     else:
-                        expected_final_value = prob_reach * (btc_bought * target_price_2y) + (1 - prob_reach) * budget
-                    expected_return = (expected_final_value / budget - 1) * 100
+                        ev = prob_reach * (btc_invest * target_price_2y) + (1 - prob_reach) * budget_invest + budget_reserve
+                    expected_return = (ev / budget - 1) * 100
+                    btc_bought = budget_invest / entry_price
                 else:
-                    expected_final_value = budget
+                    ev = budget
                     expected_return = 0.0
-                btc_bought = budget / entry_price if prob_reach > 0 else 0
-            
-            sconto = (entry_price / CURRENT_PRICE - 1) * 100
+                    btc_bought = 0
             
             strategy_rows.append({
                 'Livello': level,
-                'Prezzo Entry ($)': round(entry_price, 0),
-                'Sconto (%)': round(sconto, 1),
-                'Prob. (%)': round(prob_reach * 100, 1),
-                'BTC Acquistati': round(budget / entry_price, 6) if entry_price > 0 else 0,
-                'Valore Atteso (€)': round(expected_final_value, 0),
-                'Rend. Atteso (%)': round(expected_return, 1),
+                'Prezzo Entry ($)': f"${entry_price:,.0f}",
+                'Sconto (%)': f"{(entry_price / CURRENT_PRICE - 1) * 100:+.1f}%",
+                'Prob. (%)': f"{prob_reach * 100:.1f}%",
+                'via BS (%)': f"{prob_bs * 100:.1f}%",
+                'BTC se eseguito': f"{btc_bought:.6f}",
+                'Valore Atteso (EUR)': f"EUR {ev:,.0f}",
+                'Rend. Atteso (%)': f"{expected_return:+.1f}%",
             })
-            if es_include_bs:
-                strategy_rows[-1]['di cui via BS (%)'] = round(prob_via_bs * 100, 1)
         
-        strat_df = pd.DataFrame(strategy_rows)
+        st.dataframe(pd.DataFrame(strategy_rows), width="stretch", hide_index=True)
         
-        # Column config for proper formatting AND sorting
-        col_config = {
-            'Livello': st.column_config.TextColumn('Livello'),
-            'Prezzo Entry ($)': st.column_config.NumberColumn('Prezzo Entry ($)', format="$%,.0f"),
-            'Sconto (%)': st.column_config.NumberColumn('Sconto (%)', format="%+.1f%%"),
-            'Prob. (%)': st.column_config.NumberColumn('Prob. (%)', format="%.1f%%"),
-            'BTC Acquistati': st.column_config.NumberColumn('BTC Acquistati', format="%.6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn('Valore Atteso (€)', format="€%,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn('Rend. Atteso (%)', format="%+.1f%%"),
-        }
-        if es_include_bs:
-            col_config['di cui via BS (%)'] = st.column_config.NumberColumn('di cui via BS (%)', format="%.1f%%")
-        
-        st.dataframe(strat_df, width="stretch", hide_index=True, column_config=col_config)
-        
+        # --- Split Strategies with Reserve ---
         st.markdown("---")
-        st.markdown("### 🔀 Strategie Split (Diversificate)")
+        st.markdown("### 🔀 Strategie Split (con Riserva)")
         
         split_strategies = [
+            {'name': '100% Ora', 'allocations': [('Prezzo Attuale', 1.0)]},
             {'name': '50% Ora + 50% Q10', 'allocations': [('Prezzo Attuale', 0.5), ('Q10 Floor', 0.5)]},
             {'name': '50% Ora + 50% Q05', 'allocations': [('Prezzo Attuale', 0.5), ('Q05 Floor', 0.5)]},
-            {'name': '33% Ora + 33% Q10 + 33% Q05', 'allocations': [('Prezzo Attuale', 0.33), ('Q10 Floor', 0.33), ('Q05 Floor', 0.34)]},
+            {'name': '33/33/34 (Ora/Q10/Q05)', 'allocations': [('Prezzo Attuale', 0.33), ('Q10 Floor', 0.33), ('Q05 Floor', 0.34)]},
             {'name': 'Ladder 25% (Ora/Q20/Q10/Q05)', 'allocations': [('Prezzo Attuale', 0.25), ('Q20 Floor', 0.25), ('Q10 Floor', 0.25), ('Q05 Floor', 0.25)]},
         ]
         
-        split_data = []
+        split_rows = []
         for strat in split_strategies:
             total_btc = 0
-            total_expected = 0
+            total_ev = 0
             executed_pct = 0
             
             for level, alloc in strat['allocations']:
                 level_price = entry_levels[level]
                 prob_row = prob_df[prob_df['level'] == level].iloc[0]
                 prob = prob_row['probability'] if level != 'Prezzo Attuale' else 1.0
+                prob_bs = prob_row['prob_via_bs'] if level != 'Prezzo Attuale' else 0.0
                 
-                alloc_budget = budget * alloc
-                btc_if_exec = alloc_budget / level_price
+                alloc_invest = budget_invest * alloc
+                btc_if_exec = alloc_invest / level_price
+                total_btc += prob * btc_if_exec
                 
-                expected_btc = prob * btc_if_exec
-                total_btc += expected_btc
-                
-                expected_value = prob * (btc_if_exec * target_price_2y) + (1 - prob) * alloc_budget
-                total_expected += expected_value
-                
+                ev_part = prob * (btc_if_exec * target_price_2y) + (1 - prob) * alloc_invest
+                total_ev += ev_part
                 executed_pct += prob * alloc
             
-            expected_return = (total_expected / budget - 1) * 100
+            # Reserve: deployed during BS at best available floor
+            if budget_reserve > 0:
+                # Use Q10 as the BS entry price for reserve
+                q10_price = entry_levels['Q10 Floor']
+                prob_bs_q10 = prob_df[prob_df['level'] == 'Q10 Floor']['prob_via_bs'].values[0]
+                btc_reserve = budget_reserve / q10_price
+                total_ev += prob_bs_q10 * (btc_reserve * target_price_2y) + (1 - prob_bs_q10) * budget_reserve
+                total_btc += prob_bs_q10 * btc_reserve
             
-            split_data.append({
+            expected_return = (total_ev / budget - 1) * 100
+            
+            split_rows.append({
                 'Strategia': strat['name'],
-                'Prob. Esec. (%)': round(executed_pct * 100, 1),
-                'BTC Attesi': round(total_btc, 6),
-                'Valore Atteso (€)': round(total_expected, 0),
-                'Rend. Atteso (%)': round(expected_return, 1)
+                'Invest (%)': f"{(1 - reserve_pct) * 100:.0f}%",
+                'Riserva (%)': f"{reserve_pct * 100:.0f}%",
+                'Prob. Esec. (%)': f"{executed_pct * 100:.1f}%",
+                'BTC Attesi': f"{total_btc:.6f}",
+                'Valore Atteso (EUR)': f"EUR {total_ev:,.0f}",
+                'Rend. Atteso (%)': f"{expected_return:+.1f}%",
             })
         
-        split_col_config = {
-            'Strategia': st.column_config.TextColumn('Strategia'),
-            'Prob. Esec. (%)': st.column_config.NumberColumn('Prob. Esec. (%)', format="%.1f%%"),
-            'BTC Attesi': st.column_config.NumberColumn('BTC Attesi', format="%.6f"),
-            'Valore Atteso (€)': st.column_config.NumberColumn('Valore Atteso (€)', format="€%,.0f"),
-            'Rend. Atteso (%)': st.column_config.NumberColumn('Rend. Atteso (%)', format="%+.1f%%"),
-        }
-        st.dataframe(pd.DataFrame(split_data), width="stretch", hide_index=True, column_config=split_col_config)
+        st.dataframe(pd.DataFrame(split_rows), width="stretch", hide_index=True)
+        
+        if reserve_pct > 0:
+            st.caption(f"💡 La riserva (€{budget_reserve:,.0f}) viene deployata a Q10 durante eventi Black Swan. Se il BS non avviene, resta in cash.")
     
     with strat_tab2:
         st.subheader("📈 Backtest Storico")
@@ -1754,28 +1719,20 @@ def main():
         for strategy in bt_results.columns:
             returns = bt_results[strategy]
             excess = returns - period_rf * 100  # convert to percentage
-            sharpe_val = excess.mean() / returns.std() if returns.std() > 0 else None
+            sharpe_val = round(excess.mean() / returns.std(), 2) if returns.std() > 0 else None
+            sharpe_str = f"{sharpe_val:.2f}" if sharpe_val is not None else "N/A"
             stats_data.append({
                 'Strategia': strategy,
-                'Rend. Medio (%)': round(returns.mean(), 1),
-                'Mediana (%)': round(returns.median(), 1),
-                'Migliore (%)': round(returns.max(), 1),
-                'Peggiore (%)': round(returns.min(), 1),
-                'Std Dev (%)': round(returns.std(), 1),
-                'Sharpe*': round(sharpe_val, 2) if sharpe_val is not None else None,
-                '% Positivi': round((returns > 0).mean() * 100, 1)
+                'Rend. Medio (%)': f"{returns.mean():+.1f}%",
+                'Mediana (%)': f"{returns.median():+.1f}%",
+                'Migliore (%)': f"{returns.max():+.1f}%",
+                'Peggiore (%)': f"{returns.min():+.1f}%",
+                'Std Dev (%)': f"{returns.std():.1f}%",
+                'Sharpe*': sharpe_str,
+                '% Positivi': f"{(returns > 0).mean() * 100:.1f}%"
             })
         
-        bt_stats_config = {
-            'Rend. Medio (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Mediana (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Migliore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Peggiore (%)': st.column_config.NumberColumn(format="%+.1f%%"),
-            'Std Dev (%)': st.column_config.NumberColumn(format="%.1f%%"),
-            'Sharpe*': st.column_config.NumberColumn(format="%.2f"),
-            '% Positivi': st.column_config.NumberColumn(format="%.1f%%"),
-        }
-        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True, column_config=bt_stats_config)
+        st.dataframe(pd.DataFrame(stats_data), width="stretch", hide_index=True)
         
         st.markdown("#### 📈 Distribuzione Rendimenti")
         
@@ -1953,7 +1910,7 @@ def main():
                 ladder_data.append({
                     'Livello': name,
                     'Prezzo': f"${price:,.0f}",
-                    'Importo': f"€{budget*0.25:,.0f}",
+                    'Importo': f"EUR {budget*0.25:,.0f}",
                     'BTC': f"{btc:.6f}"
                 })
             st.dataframe(pd.DataFrame(ladder_data), width="stretch", hide_index=True)
@@ -2043,6 +2000,9 @@ def main():
             
             Formula: `P = a × Days^b`
             """)
+            
+            st.markdown("---")
+            st.markdown("**Upper Quantile Regression**: rimossa in questa versione. Sarà reintrodotta in una futura release con modelli più robusti.")
     
     # Methodology (expandable)
     with st.expander("📚 Methodology"):
@@ -2091,6 +2051,257 @@ def main():
         Il NLB degli ultimi ~6 mesi è provvisorio: non è ancora confermato che quei prezzi 
         non verranno rivisitati in futuro.
         """)
+    
+    # ============================================================================
+    # PDF EXPORT FOR AI ANALYSIS
+    # ============================================================================
+    st.markdown("---")
+    st.header("📄 Esporta Report per Analisi AI")
+    st.markdown("Genera un PDF strutturato contenente tutti i dati e un prompt professionale da dare in pasto a un'AI per ottenere un'analisi completa.")
+    
+    def generate_ai_report_pdf():
+        """Generate PDF report using fpdf2 (no reportlab dependency)"""
+        from fpdf import FPDF
+        
+        class PDF(FPDF):
+            def header(self):
+                self.set_font('Helvetica', 'B', 10)
+                self.set_text_color(247, 147, 26)
+                self.cell(0, 8, 'BITCOIN FLOOR ANALYSIS - AI ANALYSIS REPORT', new_x="LMARGIN", new_y="NEXT", align='C')
+                self.set_draw_color(247, 147, 26)
+                self.line(10, self.get_y(), 200, self.get_y())
+                self.ln(3)
+            def footer(self):
+                self.set_y(-15)
+                self.set_font('Helvetica', 'I', 7)
+                self.set_text_color(128)
+                self.cell(0, 10, f'Page {self.page_no()}/{{nb}} | NOT FINANCIAL ADVICE', align='C')
+        
+        pdf = PDF()
+        pdf.alias_nb_pages()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=20)
+        
+        def section(title):
+            pdf.set_font('Helvetica', 'B', 11)
+            pdf.set_fill_color(247, 147, 26)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(0, 7, f'  {title}', new_x="LMARGIN", new_y="NEXT", fill=True)
+            pdf.set_text_color(0)
+            pdf.ln(2)
+        
+        def text(content, size=8, bold=False):
+            pdf.set_font('Helvetica', 'B' if bold else '', size)
+            pdf.multi_cell(0, 4.5, content)
+            pdf.ln(1)
+        
+        def kv(key, val):
+            pdf.set_font('Helvetica', 'B', 8)
+            pdf.cell(65, 5, key)
+            pdf.set_font('Helvetica', '', 8)
+            pdf.cell(0, 5, str(val), new_x="LMARGIN", new_y="NEXT")
+        
+        def table(headers, rows, col_widths=None):
+            if col_widths is None:
+                col_widths = [190 / len(headers)] * len(headers)
+            # Header
+            pdf.set_font('Helvetica', 'B', 7)
+            pdf.set_fill_color(60, 60, 80)
+            pdf.set_text_color(255)
+            for i, h in enumerate(headers):
+                pdf.cell(col_widths[i], 5, h, border=1, fill=True, align='C')
+            pdf.ln()
+            # Rows
+            pdf.set_font('Helvetica', '', 7)
+            pdf.set_text_color(0)
+            for row in rows:
+                for i, val in enumerate(row):
+                    pdf.cell(col_widths[i], 4.5, str(val), border=1, align='R' if i > 0 else 'L')
+                pdf.ln()
+            pdf.ln(2)
+        
+        # ---- TITLE ----
+        pdf.set_font('Helvetica', '', 9)
+        pdf.cell(0, 5, f"Generated: {TODAY.strftime('%Y-%m-%d %H:%M UTC')} | BTC Price: ${CURRENT_PRICE:,.0f}", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(4)
+        
+        # ---- AI PROMPT ----
+        section("PROMPT PER ANALISI AI")
+        pdf.set_fill_color(240, 240, 245)
+        pdf.set_font('Helvetica', '', 8)
+        prompt = (
+            "You are a quantitative finance analyst specializing in cryptocurrency markets. "
+            "Below is a comprehensive dataset from a Bitcoin Floor Analysis tool that uses Power Law regression, "
+            "Quantile Regression on historical LOW prices, Monte Carlo simulations with regime-switching "
+            "volatility, and Extreme Value Theory (EVT).\n\n"
+            "Please analyze this data and provide:\n"
+            "1. CURRENT MARKET POSITION: Where is BTC relative to its floor models? Is it cheap, fair, or expensive?\n"
+            "2. ENTRY STRATEGY ASSESSMENT: Given the Monte Carlo probabilities, which entry strategy offers the best "
+            "risk-adjusted expected value? Consider the reserve fund allocation for Black Swan events.\n"
+            "3. RISK ANALYSIS: What are the key risks the models may be underestimating? "
+            "How does the halving cycle phase affect the outlook?\n"
+            "4. MODEL LIMITATIONS: Identify potential weaknesses in the methodology.\n"
+            "5. ACTIONABLE RECOMMENDATIONS: Provide specific, time-bound recommendations with confidence levels.\n\n"
+            "Base your analysis ONLY on the data provided below. Do not hallucinate or assume data not present."
+        )
+        pdf.multi_cell(0, 4.5, prompt, fill=True)
+        pdf.ln(4)
+        
+        # ---- 1. MARKET SNAPSHOT ----
+        section("1. MARKET SNAPSHOT")
+        kv("Current Price (USD)", f"${CURRENT_PRICE:,.0f}")
+        kv("Date", TODAY.strftime('%Y-%m-%d'))
+        kv("Days Since Genesis (2009-01-03)", f"{TODAY_DAYS:,}")
+        kv("NLB Floor (Never Look Back)", f"${current_nlb:,.0f}")
+        kv("PL Fair Value", f"${pl_fair:,.0f}")
+        kv("PL Lower Band (-1 sigma)", f"${pl_lower:,.0f}")
+        kv("PL Upper Band (+1 sigma)", f"${pl_upper:,.0f}")
+        kv("Price / PL Fair Value", f"{CURRENT_PRICE/pl_fair:.2f}x")
+        pdf.ln(2)
+        
+        # ---- 2. HALVING CYCLE ----
+        section("2. HALVING CYCLE")
+        kv("Last Halving", last_halving.strftime('%Y-%m-%d'))
+        kv("Days Since Halving", str(days_since_halving))
+        kv("Next Halving (est.)", NEXT_HALVING_EST.strftime('%Y-%m'))
+        kv("Cycle Progress", f"{cycle_progress:.1f}%")
+        if cycle_progress < 25:
+            kv("Phase", "Accumulation Post-Halving (historically bullish)")
+        elif cycle_progress < 50:
+            kv("Phase", "Bull Run (historically rapid growth)")
+        elif cycle_progress < 75:
+            kv("Phase", "Cycle Maturity (possible tops, increasing caution)")
+        else:
+            kv("Phase", "Late Cycle / Pre-Halving (historically consolidation)")
+        pdf.ln(2)
+        
+        # ---- 3. FLOOR MODELS ----
+        section("3. FLOOR MODELS (Quantile Regression on LOG(LOW) prices)")
+        floor_headers = ["Quantile", "Floor Price", "Dist. from Current", "Slope (b)", "SE(b)", "p-value"]
+        floor_rows = []
+        for q in quantiles:
+            qm = qr_models[q]
+            fp = predict_pl(TODAY_DAYS, qm['a'], qm['b'])
+            dist = (CURRENT_PRICE / fp - 1) * 100
+            floor_rows.append([
+                f"Q{int(q*100):02d}", f"${fp:,.0f}", f"+{dist:.1f}%",
+                f"{qm['b']:.4f}", f"{qm['se_slope']:.4f}", f"{qm['pval_slope']:.2e}"
+            ])
+        table(floor_headers, floor_rows, [22, 35, 35, 28, 28, 32])
+        
+        # ---- 4. POWER LAW MODEL ----
+        section("4. POWER LAW OLS MODEL (on CLOSE prices)")
+        text(f"Formula: Price = a * Days^b")
+        kv("a", f"{pl_standard['a']:.6e}")
+        kv("b", f"{pl_standard['b']:.4f}")
+        kv("R-squared", f"{pl_standard['r2']:.4f}")
+        kv("Residual sigma", f"{pl_standard['residual_std']:.4f}")
+        kv("Fair Value today", f"${pl_fair:,.0f}")
+        pdf.ln(2)
+        
+        # ---- 5. FLOOR PROJECTIONS ----
+        section("5. FLOOR PROJECTIONS (1-5 Year)")
+        proj_headers = ["Floor"] + [f"+{y}Y" for y in range(1, 6)]
+        proj_rows = []
+        for q in quantiles:
+            row = [f"Q{int(q*100):02d}"]
+            for y in range(1, 6):
+                val = predict_pl(TODAY_DAYS + y * 365, qr_models[q]['a'], qr_models[q]['b'])
+                row.append(f"${val:,.0f}")
+            proj_rows.append(row)
+        # PL Fair
+        row_fair = ["PL Fair"]
+        for y in range(1, 6):
+            val = predict_pl(TODAY_DAYS + y * 365, pl_standard['a'], pl_standard['b'])
+            row_fair.append(f"${val:,.0f}")
+        proj_rows.append(row_fair)
+        table(proj_headers, proj_rows, [22] + [33.6]*5)
+        
+        pdf.add_page()
+        
+        # ---- 6. ENTRY STRATEGY DATA ----
+        section(f"6. ENTRY STRATEGY (Budget: EUR {budget:,.0f}, Horizon: {horizon_months}m, Target: ${target_price_2y:,.0f})")
+        text(f"Reserve: {reserve_pct*100:.0f}% (EUR {budget_reserve:,.0f}) | BS Prob: {es_bs_prob*100:.0f}% | BS Impact: {es_bs_impact*100:.0f}%")
+        
+        entry_headers = ["Level", "Entry $", "Discount", "Prob.", "via BS", "BTC", "EV (EUR)", "Exp.Ret."]
+        entry_rows = []
+        for row in strategy_rows:
+            entry_rows.append([
+                row['Livello'],
+                row['Prezzo Entry ($)'],
+                row['Sconto (%)'],
+                row['Prob. (%)'],
+                row.get('via BS (%)', '0.0%'),
+                row['BTC se eseguito'],
+                row['Valore Atteso (EUR)'],
+                row['Rend. Atteso (%)'],
+            ])
+        table(entry_headers, entry_rows, [30, 22, 22, 18, 18, 22, 30, 22])
+        
+        # ---- 7. SPLIT STRATEGIES ----
+        section("7. SPLIT STRATEGIES (with Reserve)")
+        split_headers = ["Strategy", "Invest%", "Reserve%", "Prob.Exec.", "BTC Exp.", "EV (EUR)", "Exp.Ret."]
+        split_rows_pdf = []
+        for row in split_rows:
+            split_rows_pdf.append([
+                row['Strategia'],
+                row['Invest (%)'],
+                row['Riserva (%)'],
+                row['Prob. Esec. (%)'],
+                row['BTC Attesi'],
+                row['Valore Atteso (EUR)'],
+                row['Rend. Atteso (%)'],
+            ])
+        table(split_headers, split_rows_pdf, [42, 18, 18, 22, 22, 32, 22])
+        
+        # ---- 8. METHODOLOGY ----
+        section("8. METHODOLOGY NOTES FOR AI")
+        method = (
+            "QUANTILE REGRESSION: Fits specific percentiles of log(price) vs log(days) using Huber sandwich SE. "
+            "Lower quantiles (Q01-Q20) fitted on daily LOW prices define floors.\n\n"
+            "MONTE CARLO: Regime-switching model with normal (85%) and stress (15%) volatility regimes. "
+            "Soft floor bounce at 85% of power law floor (70% bounce probability, 30% pass-through). "
+            "Black Swan events: single shock within first half of horizon. "
+            "Chunked vectorization (2000 sims/chunk) for Streamlit Cloud memory safety.\n\n"
+            "EVT: Generalized Pareto Distribution on losses exceeding 90th percentile. "
+            "30-day VaR scaled via sqrt(t) approximation (known limitation for autocorrelated assets).\n\n"
+            "NLB (Never Look Back): Highest price that was never revisited. Last ~6 months provisional.\n\n"
+            "KNOWN LIMITATIONS: MC assumes i.i.d. returns (no momentum/mean-reversion). "
+            "Regime threshold (1.5 sigma) is fixed, not GARCH-adaptive. "
+            "Power Law may break down if Bitcoin adoption dynamics fundamentally change. "
+            "Floor models are backward-looking; structural breaks could invalidate them."
+        )
+        pdf.set_font('Helvetica', '', 7)
+        pdf.multi_cell(0, 3.8, method)
+        pdf.ln(6)
+        
+        pdf.set_font('Helvetica', 'I', 7)
+        pdf.set_text_color(128)
+        pdf.multi_cell(0, 3.5, 
+            "This report was auto-generated by BTC Floor Analysis tool. "
+            "All models are statistical estimates, not predictions. "
+            "Past performance does not guarantee future results. This is NOT financial advice.")
+        
+        return bytes(pdf.output())
+    
+    if st.button("📄 Genera Report PDF per AI", type="primary", use_container_width=True):
+        with st.spinner("Generando PDF..."):
+            try:
+                pdf_bytes = generate_ai_report_pdf()
+                st.download_button(
+                    label="⬇️ Scarica Report PDF",
+                    data=pdf_bytes,
+                    file_name=f"BTC_Floor_Analysis_{TODAY.strftime('%Y%m%d')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                st.success("Report generato! Clicca il bottone sopra per scaricarlo.")
+            except Exception as e:
+                st.error(f"Errore nella generazione del PDF: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+    
+    st.caption("Il PDF contiene un prompt strutturato e tutti i dati necessari per Claude, GPT-4, o qualsiasi LLM.")
     
     # Footer
     st.markdown("---")
