@@ -2241,7 +2241,8 @@ def main():
             fig_zoom.add_trace(go.Scatter(x=proj_zoom['Date'], y=predict_pl(proj_zoom['Days'], qr_models[qval]['a'], qr_models[qval]['b']), name=f'{qname} proj', line=dict(color=qcol, width=1, dash='dot'), showlegend=False))
         fig_zoom.add_trace(go.Scatter(x=df_zoom['Date'], y=predict_pl(df_zoom['Days'], pl_standard['a'], pl_standard['b']), name='PL Fair', line=dict(color='#6c757d', width=1, dash='dash')))
         fig_zoom.add_trace(go.Scatter(x=proj_zoom['Date'], y=predict_pl(proj_zoom['Days'], pl_standard['a'], pl_standard['b']), name='PL Fair proj', line=dict(color='#6c757d', width=1, dash='dot'), showlegend=False))
-        fig_zoom.add_vline(x=TODAY.isoformat(), line_dash='solid', line_color='gray', annotation_text='Today')
+        fig_zoom.add_shape(type="line", x0=TODAY, x1=TODAY, y0=0, y1=1, yref="paper", line=dict(color="gray", dash="solid"))
+        fig_zoom.add_annotation(x=TODAY, y=1, yref="paper", text="Today", showarrow=False, yshift=10, font=dict(size=10, color="gray"))
         fig_zoom.update_layout(title='12-Month Detail + 6-Month Projection', yaxis_title='Price (USD)', template='plotly_white', height=300, margin=dict(l=60, r=20, t=40, b=40), legend=dict(orientation='h', y=-0.2))
         add_chart(fig_zoom, 180, 75)
         
